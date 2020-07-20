@@ -19,7 +19,9 @@
     'in_app_dial': 0,
 
     'custom_media_session_client': 1,
-    'enable_account_manager': 1,
+#KAD disable account manager so that normal user able to sign-in
+#KAD    'enable_account_manager': 1,
+    'enable_account_manager': 0,
     'enable_map_to_mesh': 1,
 
     'cobalt_enable_quic': 0,
