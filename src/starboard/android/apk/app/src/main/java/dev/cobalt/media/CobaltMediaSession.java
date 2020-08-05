@@ -328,6 +328,7 @@ public class CobaltMediaSession
     // To restart playback after permanent loss, the user must take an explicit action.
     // See: https://developer.android.com/guide/topics/media-apps/audio-focus
     explicitUserActionRequired = (focusChange == AudioManager.AUDIOFOCUS_LOSS);
+    Log.i(TAG,"KAD: explicitUserActionReq "+explicitUserActionRequired);
   }
 
   private AudioManager getAudioManager() {
@@ -440,9 +441,11 @@ public class CobaltMediaSession
         // it. But if we don't have window focus, we know the user is not interacting with our app
         // and we should not request media focus.
         if (!explicitUserActionRequired || activityHolder.get().hasWindowFocus()) {
+	  Log.i(TAG,"KAD: ConfigureMediaFocus UserActionReq "+explicitUserActionRequired+" Focus "+activityHolder.get().hasWindowFocus());
           explicitUserActionRequired = false;
           configureMediaFocus(playbackState);
         } else {
+	  Log.w(TAG,"KAD: GoTo PAUSE UserActionReq "+explicitUserActionRequired+" Focus "+activityHolder.get().hasWindowFocus());
           Log.w(TAG, "Audiofocus action: PAUSE (explicit user action required)");
           nativeInvokeAction(PlaybackStateCompat.ACTION_PAUSE);
         }
