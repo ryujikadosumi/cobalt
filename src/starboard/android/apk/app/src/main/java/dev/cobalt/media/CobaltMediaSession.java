@@ -441,7 +441,7 @@ public class CobaltMediaSession
         // it. But if we don't have window focus, we know the user is not interacting with our app
         // and we should not request media focus.
         if (!explicitUserActionRequired || activityHolder.get().hasWindowFocus()) {
-	  Log.i(TAG,"KAD: ConfigureMediaFocus UserActionReq "+explicitUserActionRequired+" Focus "+activityHolder.get().hasWindowFocus());
+	  Log.i(TAG,"KAD: GoTO ConfigureMediaFocus UserActionReq "+explicitUserActionRequired+" Focus "+activityHolder.get().hasWindowFocus());
           explicitUserActionRequired = false;
           configureMediaFocus(playbackState);
         } else {
