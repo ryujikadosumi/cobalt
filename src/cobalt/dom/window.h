@@ -31,6 +31,7 @@
 #include "cobalt/cssom/css_style_declaration.h"
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/animation_frame_request_callback_list.h"
+#include "cobalt/dom/application_lifecycle_state.h"
 #include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/crypto.h"
 #include "cobalt/dom/csp_delegate_type.h"
@@ -41,7 +42,6 @@
 #include "cobalt/dom/media_query_list.h"
 #include "cobalt/dom/on_screen_keyboard.h"
 #include "cobalt/dom/on_screen_keyboard_bridge.h"
-#include "cobalt/dom/page_visibility_state.h"
 #include "cobalt/dom/parser.h"
 #include "cobalt/dom/screenshot_manager.h"
 #if defined(ENABLE_TEST_RUNNER)
@@ -87,7 +87,6 @@ namespace cobalt {
 namespace dom {
 
 class Camera3D;
-class Console;
 class Document;
 class Element;
 class Event;
@@ -106,7 +105,7 @@ class WindowTimers;
 //   https://www.w3.org/TR/html50/browsers.html#the-window-object
 //
 // TODO: Properly handle viewport resolution change event.
-class Window : public EventTarget, public PageVisibilityState::Observer {
+class Window : public EventTarget, public ApplicationLifecycleState::Observer {
  public:
   typedef AnimationFrameRequestCallbackList::FrameRequestCallback
       FrameRequestCallback;
@@ -121,7 +120,9 @@ class Window : public EventTarget, public PageVisibilityState::Observer {
   // close() was called.
   typedef base::Callback<void(base::TimeDelta)> CloseCallback;
   typedef UrlRegistry<MediaSource> MediaSourceRegistry;
-  typedef base::Callback<bool(const GURL&, const std::string&)> CacheCallback;
+  typedef base::Callback<void(const std::string&,
+                              const base::Optional<std::string>&)>
+      CacheCallback;
 
   enum ClockType {
     kClockTypeTestRunner,
@@ -165,7 +166,6 @@ class Window : public EventTarget, public PageVisibilityState::Observer {
       const base::Closure& window_minimize_callback,
       OnScreenKeyboardBridge* on_screen_keyboard_bridge,
       const scoped_refptr<input::Camera3D>& camera_3d,
-      const scoped_refptr<cobalt::media_session::MediaSession>& media_session,
       const OnStartDispatchEventCallback&
           start_tracking_dispatch_event_callback,
       const OnStopDispatchEventCallback& stop_tracking_dispatch_event_callback,
@@ -313,10 +313,6 @@ class Window : public EventTarget, public PageVisibilityState::Observer {
   //   https://dvcs.w3.org/hg/speech-api/raw-file/4f41ea1126bb/webspeechapi.html#tts-section
   scoped_refptr<speech::SpeechSynthesis> speech_synthesis() const;
 
-  // Custom, not in any spec.
-  //
-  const scoped_refptr<Console>& console() const;
-
   const scoped_refptr<Camera3D>& camera_3d() const;
 
 #if defined(ENABLE_TEST_RUNNER)
@@ -353,13 +349,13 @@ class Window : public EventTarget, public PageVisibilityState::Observer {
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
 
   void set_web_media_player_factory(
-      media::WebMediaPlayerFactory* web_media_player_factory) {
-    html_element_context_->set_web_media_player_factory(
-        web_media_player_factory);
+    media::WebMediaPlayerFactory* web_media_player_factory) {
+  html_element_context_->set_web_media_player_factory(
+      web_media_player_factory);
   }
 
   // Sets the current application state, forwarding on to the
-  // PageVisibilityState associated with it and its document, causing
+  // ApplicationLifecycleState associated with it and its document, causing
   // precipitate events to be dispatched.
   void SetApplicationState(base::ApplicationState state);
 
@@ -368,16 +364,21 @@ class Window : public EventTarget, public PageVisibilityState::Observer {
   // Returns whether or not the script was handled.
   bool ReportScriptError(const script::ErrorReport& error_report);
 
-  // PageVisibilityState::Observer implementation.
+  // ApplicationLifecycleState::Observer implementation.
   void OnWindowFocusChanged(bool has_focus) override;
   void OnVisibilityStateChanged(VisibilityState visibility_state) override;
+  void OnFrozennessChanged(bool is_frozen) override;
 
   // Called when the document's root element has its offset dimensions requested
   // and is unable to provide them.
   void OnDocumentRootElementUnableToProvideOffsetDimensions();
 
+  void OnWindowOnOnlineEvent();
+  void OnWindowOnOfflineEvent();
+
   // Cache the passed in splash screen content for the window.location URL.
-  void CacheSplashScreen(const std::string& content);
+  void CacheSplashScreen(const std::string& content,
+                         const base::Optional<std::string>& topic);
 
   const scoped_refptr<loader::CORSPreflightCache> get_preflight_cache() {
     return preflight_cache_;
@@ -403,6 +404,9 @@ class Window : public EventTarget, public PageVisibilityState::Observer {
   }
 
   bool enable_map_to_mesh() { return enable_map_to_mesh_; }
+
+  const scoped_refptr<media_session::MediaSession>
+      media_session() const;
 
   DEFINE_WRAPPABLE_TYPE(Window);
 
@@ -439,14 +443,13 @@ class Window : public EventTarget, public PageVisibilityState::Observer {
   scoped_refptr<TestRunner> test_runner_;
 #endif  // ENABLE_TEST_RUNNER
 
-  const std::unique_ptr<HTMLElementContext> html_element_context_;
   scoped_refptr<Performance> performance_;
+  const std::unique_ptr<HTMLElementContext> html_element_context_;
   scoped_refptr<Document> document_;
   std::unique_ptr<loader::Loader> document_loader_;
   scoped_refptr<History> history_;
   scoped_refptr<Navigator> navigator_;
   std::unique_ptr<RelayLoadEvent> relay_on_load_event_;
-  scoped_refptr<Console> console_;
   scoped_refptr<Camera3D> camera_3d_;
   std::unique_ptr<WindowTimers> window_timers_;
   std::unique_ptr<AnimationFrameRequestCallbackList>

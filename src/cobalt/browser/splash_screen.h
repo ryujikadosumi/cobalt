@@ -42,10 +42,10 @@ class SplashScreen : public LifecycleObserver {
                render_tree::ResourceProvider* resource_provider,
                float layout_refresh_rate,
                const base::Optional<GURL>& fallback_splash_screen_url,
-               const GURL& initial_main_web_module_url,
                cobalt::browser::SplashScreenCache* splash_screen_cache,
                const base::Callback<void(base::TimeDelta)>&
-                   on_splash_screen_shutdown_complete);
+                   on_splash_screen_shutdown_complete,
+               const base::Closure& maybe_freeze_callback);
   ~SplashScreen();
 
   void SetSize(const cssom::ViewportSize& viewport_size) {
@@ -53,16 +53,18 @@ class SplashScreen : public LifecycleObserver {
   }
 
   // LifecycleObserver implementation.
-  void Prestart() override { web_module_->Prestart(); }
-  void Start(render_tree::ResourceProvider* resource_provider) override {
-    web_module_->Start(resource_provider);
+  void Blur() override { web_module_->Blur(); }
+  void Conceal(render_tree::ResourceProvider* resource_provider) override {
+    web_module_->Conceal(resource_provider);
   }
-  void Pause() override { web_module_->Pause(); }
-  void Unpause() override { web_module_->Unpause(); }
-  void Suspend() override { web_module_->Suspend(); }
-  void Resume(render_tree::ResourceProvider* resource_provider) override {
-    web_module_->Resume(resource_provider);
+  void Freeze() override { web_module_->Freeze(); }
+  void Unfreeze(render_tree::ResourceProvider* resource_provider) override {
+    web_module_->Unfreeze(resource_provider);
   }
+  void Reveal(render_tree::ResourceProvider* resource_provider) override {
+    web_module_->Reveal(resource_provider);
+  }
+  void Focus() override { web_module_->Focus(); }
 
   void ReduceMemory() { web_module_->ReduceMemory(); }
 
@@ -77,6 +79,8 @@ class SplashScreen : public LifecycleObserver {
   bool ShutdownSignaled() const { return shutdown_signaled_; }
 
   WebModule& web_module() { return *web_module_; }
+
+  bool IsReadyToFreeze() { return web_module_->IsReadyToFreeze(); }
 
  private:
   // Run when window.close() is called by the WebModule.

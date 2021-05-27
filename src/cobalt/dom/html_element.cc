@@ -17,10 +17,12 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <utility>
 
 #include "base/lazy_instance.h"
 #include "base/message_loop/message_loop_task_runner.h"
 #include "base/strings/string_number_conversions.h"
+#include "cobalt/base/console_log.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/absolute_url_value.h"
 #include "cobalt/cssom/cascaded_style.h"
@@ -60,6 +62,7 @@
 #include "cobalt/dom/rule_matching.h"
 #include "cobalt/dom/text.h"
 #include "cobalt/loader/image/animated_image_tracker.h"
+#include "cobalt/loader/resource_cache.h"
 #include "third_party/icu/source/common/unicode/uchar.h"
 #include "third_party/icu/source/common/unicode/utf8.h"
 
@@ -77,6 +80,20 @@ namespace {
 // commonly used value of -1 is reserved.
 // https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/tabindex
 const int32 kUiNavFocusTabIndexThreshold = -2;
+
+// This custom data attribute can be used to force UI navigation to remain
+// focused on the element for a specified duration.
+const char kUiNavFocusDurationAttribute[] = "data-cobalt-ui-nav-focus-duration";
+
+// https://www.w3.org/TR/resource-timing-1/#dom-performanceresourcetiming-initiatortype
+const char* kPerformanceResourceTimingInitiatorType = "img";
+
+void UiNavCallbackHelper(
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+    base::Callback<void(SbTimeMonotonic)> callback) {
+  task_runner->PostTask(FROM_HERE,
+                        base::Bind(callback, SbTimeGetMonotonicNow()));
+}
 
 struct NonTrivialStaticFields {
   NonTrivialStaticFields() {
@@ -526,6 +543,9 @@ void HTMLElement::set_scroll_left(float x) {
   node_document()->DoSynchronousLayout();
 
   if (!ui_nav_item_ || !ui_nav_item_->IsContainer()) {
+    CLOG(WARNING, debugger_hooks())
+        << "scrollLeft only works on HTML elements with 'overflow' set to "
+        << "'scroll' or 'auto'";
     return;
   }
 
@@ -575,6 +595,9 @@ void HTMLElement::set_scroll_top(float y) {
   node_document()->DoSynchronousLayout();
 
   if (!ui_nav_item_ || !ui_nav_item_->IsContainer()) {
+    CLOG(WARNING, debugger_hooks())
+        << "scrollTop only works on HTML elements with 'overflow' set to "
+        << "'scroll' or 'auto'";
     return;
   }
 
@@ -854,6 +877,10 @@ scoped_refptr<HTMLLinkElement> HTMLElement::AsHTMLLinkElement() { return NULL; }
 
 scoped_refptr<HTMLMetaElement> HTMLElement::AsHTMLMetaElement() { return NULL; }
 
+scoped_refptr<HTMLMediaElement> HTMLElement::AsHTMLMediaElement() {
+  return NULL;
+}
+
 scoped_refptr<HTMLParagraphElement> HTMLElement::AsHTMLParagraphElement() {
   return NULL;
 }
@@ -1009,6 +1036,10 @@ void HTMLElement::UpdateComputedStyleRecursively(
   if (!is_valid) {
     UpdateComputedStyle(parent_computed_style_declaration, root_computed_style,
                         style_change_event_time, kAncestorsAreDisplayed);
+    UpdateUiNavigation();
+    node_document()->set_ui_nav_needs_layout(true);
+  } else if (ui_nav_needs_update_) {
+    UpdateUiNavigation();
   }
 
   // Do not update computed style for descendants of "display: none" elements,
@@ -1016,10 +1047,6 @@ void HTMLElement::UpdateComputedStyleRecursively(
   // themselves still need to have their computed style updated, in case the
   // value of display is changed.
   if (computed_style()->display() == cssom::KeywordValue::GetNone()) {
-    if (ui_nav_item_) {
-      ui_nav_item_->SetEnabled(false);
-      ui_nav_item_ = nullptr;
-    }
     return;
   }
 
@@ -1066,6 +1093,7 @@ void HTMLElement::MarkNotDisplayedOnNodeAndDescendants() {
     }
   }
 
+  ReleaseUiNavigationItem();
   MarkNotDisplayedOnDescendants();
 }
 
@@ -1156,19 +1184,25 @@ void HTMLElement::InvalidateLayoutBoxes() {
   directionality_ = base::nullopt;
 }
 
-void HTMLElement::OnUiNavBlur() { Blur(); }
-
-void HTMLElement::OnUiNavFocus() {
-  // Ensure the focusing steps do not trigger the UI navigation item to
-  // force focus again.
-  if (!ui_nav_focusing_) {
-    ui_nav_focusing_ = true;
-    Focus();
-    ui_nav_focusing_ = false;
+void HTMLElement::OnUiNavBlur(SbTimeMonotonic time) {
+  if (node_document() && node_document()->ui_nav_focus_element() == this) {
+    if (node_document()->TrySetUiNavFocusElement(nullptr, time)) {
+      Blur();
+    }
   }
 }
 
-void HTMLElement::OnUiNavScroll() {
+void HTMLElement::OnUiNavFocus(SbTimeMonotonic time) {
+  // Suppress the focus event if this is already focused -- i.e. the HTMLElement
+  // initiated the focus change that resulted in this call to OnUiNavFocus.
+  if (node_document() && node_document()->ui_nav_focus_element() != this) {
+    if (node_document()->TrySetUiNavFocusElement(this, time)) {
+      Focus();
+    }
+  }
+}
+
+void HTMLElement::OnUiNavScroll(SbTimeMonotonic /* time */) {
   Document* document = node_document();
   scoped_refptr<Window> window(document ? document->window() : nullptr);
   DispatchEvent(new UIEvent(base::Tokens::scroll(), Event::kBubbles,
@@ -1200,12 +1234,7 @@ HTMLElement::HTMLElement(Document* document, base::Token local_name)
 }
 
 HTMLElement::~HTMLElement() {
-  // Disable any associated navigation item to prevent callbacks during
-  // destruction.
-  if (ui_nav_item_) {
-    ui_nav_item_->SetEnabled(false);
-    ui_nav_item_ = nullptr;
-  }
+  ReleaseUiNavigationItem();
 
   if (IsInDocument()) {
     dom_stat_tracker_->OnHtmlElementRemovedFromDocument();
@@ -1243,6 +1272,8 @@ void HTMLElement::OnRemovedFromDocument() {
   // by OnRemovedFromDocument() being called on them from
   // Node::OnRemovedFromDocument().
   ClearRuleMatchingStateInternal(false /*invalidate_descendants*/);
+
+  ReleaseUiNavigationItem();
 }
 
 void HTMLElement::OnMutation() { InvalidateMatchingRulesRecursively(); }
@@ -1254,6 +1285,8 @@ void HTMLElement::OnSetAttribute(const std::string& name,
     SetDir(value);
   } else if (name == "tabindex") {
     SetTabIndex(value);
+  } else if (name == kUiNavFocusDurationAttribute) {
+    SetUiNavFocusDuration(value);
   }
 
   // Always clear the matching state when an attribute changes. Any attribute
@@ -1266,6 +1299,8 @@ void HTMLElement::OnRemoveAttribute(const std::string& name) {
     SetDir("");
   } else if (name == "tabindex") {
     SetTabIndex("");
+  } else if (name == kUiNavFocusDurationAttribute) {
+    SetUiNavFocusDuration("");
   }
 
   // Always clear the matching state when an attribute changes. Any attribute
@@ -1351,18 +1386,6 @@ void HTMLElement::RunFocusingSteps() {
 
   // Custom, not in any spec.
   ClearRuleMatchingState();
-
-  // Set the focus item for the UI navigation system.
-  if (ui_nav_item_ && !ui_nav_item_->IsContainer() && !ui_nav_focusing_) {
-    // Only navigation items attached to the root container are interactable.
-    // If the item is not registered with a container, then force a layout to
-    // connect items to their containers and eventually to the root container.
-    if (!ui_nav_item_->GetContainerItem()) {
-      // UI navigation items are updated as part of generating the render tree.
-      node_document()->DoSynchronousLayoutAndGetRenderTree();
-    }
-    ui_nav_item_->Focus();
-  }
 }
 
 // Algorithm for RunUnFocusingSteps:
@@ -1400,6 +1423,41 @@ void HTMLElement::RunUnFocusingSteps() {
   ClearRuleMatchingState();
 }
 
+void HTMLElement::UpdateUiNavigationFocus() {
+  if (!node_document()) {
+    return;
+  }
+
+  // Set the focus item for the UI navigation system. Search up the DOM tree to
+  // find the nearest ancestor that is a UI navigation item if needed. Do this
+  // step before dispatching events as the event handlers may make UI navigation
+  // changes.
+  for (Node* node = this; node; node = node->parent_node()) {
+    Element* element = node->AsElement();
+    if (!element) {
+      continue;
+    }
+    HTMLElement* html_element = element->AsHTMLElement();
+    if (!html_element) {
+      continue;
+    }
+    if (!html_element->ui_nav_item_ ||
+        html_element->ui_nav_item_->IsContainer()) {
+      continue;
+    }
+
+    // Updating the UI navigation focus element has the additional effect of
+    // suppressing the Blur call for the previously focused HTMLElement and the
+    // Focus call for this HTMLElement as a result of OnUiNavBlur / OnUiNavFocus
+    // callbacks that result from initiating the UI navigation focus change.
+    if (node_document()->TrySetUiNavFocusElement(html_element,
+                                                 SbTimeGetMonotonicNow())) {
+      html_element->ui_nav_item_->Focus();
+    }
+    break;
+  }
+}
+
 void HTMLElement::SetDir(const std::string& value) {
   // https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-dir-attribute
   auto previous_dir = dir_;
@@ -1433,6 +1491,28 @@ void HTMLElement::SetTabIndex(const std::string& value) {
   } else {
     tabindex_ = base::nullopt;
   }
+
+  // Changing the tabindex may trigger a UI navigation change.
+  ui_nav_needs_update_ = true;
+}
+
+void HTMLElement::SetUiNavFocusDuration(const std::string& value) {
+  double duration;
+  if (base::StringToDouble(value, &duration)) {
+    ui_nav_focus_duration_ = static_cast<float>(duration);
+    if (!std::isfinite(*ui_nav_focus_duration_) ||
+        *ui_nav_focus_duration_ < 0.0f) {
+      ui_nav_focus_duration_ = 0.0f;
+    }
+    if (ui_nav_item_) {
+      ui_nav_item_->SetFocusDuration(*ui_nav_focus_duration_);
+    }
+  } else {
+    ui_nav_focus_duration_ = base::nullopt;
+    if (ui_nav_item_) {
+      ui_nav_item_->SetFocusDuration(0.0f);
+    }
+  }
 }
 
 namespace {
@@ -1452,8 +1532,7 @@ HTMLElement::DirState GetStringDirection(const std::string& utf8_string) {
     if (property == U_LEFT_TO_RIGHT) {
       return HTMLElement::kDirLeftToRight;
     }
-    if (property == U_RIGHT_TO_LEFT ||
-        property == U_RIGHT_TO_LEFT_ARABIC) {
+    if (property == U_RIGHT_TO_LEFT || property == U_RIGHT_TO_LEFT_ARABIC) {
       return HTMLElement::kDirRightToLeft;
     }
   }
@@ -1546,11 +1625,11 @@ HTMLElement::DirState HTMLElement::GetUsedDirState() {
     return kDirLeftToRight;
   }
 
-  // Although the spec says to use the parent's directionality, the W3C test
-  // (the-dir-attribute-069.html) says to default to LTR. Chrome follows the
-  // W3C expectation, so follow Chrome. Additional discussion here:
-  //   https://github.com/w3c/i18n-drafts/issues/235
-  // The following code block which implements the spec is left for reference.
+// Although the spec says to use the parent's directionality, the W3C test
+// (the-dir-attribute-069.html) says to default to LTR. Chrome follows the
+// W3C expectation, so follow Chrome. Additional discussion here:
+//   https://github.com/w3c/i18n-drafts/issues/235
+// The following code block which implements the spec is left for reference.
 #if 0
   // Otherwise, the directionality of the element is the same as the element's
   //   parent element's directionality.
@@ -2016,11 +2095,30 @@ void HTMLElement::UpdateComputedStyle(
     }
   }
 
-  // Update the UI navigation item.
-  UpdateUiNavigationType();
-
   computed_style_valid_ = true;
   pseudo_elements_computed_styles_valid_ = true;
+}
+
+void HTMLElement::CollectHTMLMediaElementsRecursively(
+    std::vector<HTMLMediaElement*>* html_media_elements,
+    int current_element_depth) {
+  int max_depth = node_document()->dom_max_element_depth();
+  if (max_depth > 0 && current_element_depth >= max_depth) {
+    return;
+  }
+
+  for (Element* element = first_element_child(); element;
+       element = element->next_element_sibling()) {
+    HTMLElement* html_element = element->AsHTMLElement();
+    if (html_element) {
+      HTMLMediaElement* media_html_element = html_element->AsHTMLMediaElement();
+      if (media_html_element) {
+        html_media_elements->push_back(media_html_element);
+      }
+      html_element->CollectHTMLMediaElementsRecursively(
+          html_media_elements, current_element_depth + 1);
+    }
+  }
 }
 
 void HTMLElement::SetPseudoElement(
@@ -2051,21 +2149,24 @@ bool HTMLElement::IsDesignated() const {
   return false;
 }
 
-bool HTMLElement::CanbeDesignatedByPointerIfDisplayed() const {
+bool HTMLElement::CanBeDesignatedByPointerIfDisplayed() const {
   return computed_style()->pointer_events() != cssom::KeywordValue::GetNone() &&
          computed_style()->visibility() == cssom::KeywordValue::GetVisible();
 }
 
-void HTMLElement::UpdateUiNavigationType() {
+void HTMLElement::UpdateUiNavigation() {
+  ui_nav_needs_update_ = false;
+
   base::Optional<ui_navigation::NativeItemType> ui_nav_item_type;
-  if (computed_style()->overflow() == cssom::KeywordValue::GetAuto() ||
-      computed_style()->overflow() == cssom::KeywordValue::GetScroll()) {
-    ui_nav_item_type = ui_navigation::kNativeItemTypeContainer;
-  } else if (tabindex_ && *tabindex_ <= kUiNavFocusTabIndexThreshold) {
+  if (tabindex_ && *tabindex_ <= kUiNavFocusTabIndexThreshold &&
+      computed_style()->pointer_events() != cssom::KeywordValue::GetNone()) {
     ui_nav_item_type = ui_navigation::kNativeItemTypeFocus;
+  } else if (computed_style()->overflow() == cssom::KeywordValue::GetAuto() ||
+             computed_style()->overflow() == cssom::KeywordValue::GetScroll()) {
+    ui_nav_item_type = ui_navigation::kNativeItemTypeContainer;
   }
 
-  if (ui_nav_item_type) {
+  if (ui_nav_item_type && IsDisplayed() && node_document()) {
     ui_navigation::NativeItemDir ui_nav_item_dir;
     ui_nav_item_dir.is_left_to_right =
         directionality() == kLeftToRightDirectionality;
@@ -2080,28 +2181,55 @@ void HTMLElement::UpdateUiNavigationType() {
       // The current navigation item isn't of the correct type. Disable it so
       // that callbacks won't be invoked for it. The object will be destroyed
       // when all references to it are released.
-      ui_nav_item_->SetEnabled(false);
+      ReleaseUiNavigationItem();
     }
+
     ui_nav_item_ = new ui_navigation::NavItem(
         *ui_nav_item_type,
         base::Bind(
-            base::IgnoreResult(&base::SingleThreadTaskRunner::PostTask),
-            base::Unretained(base::MessageLoop::current()->task_runner().get()),
-            FROM_HERE,
+            &UiNavCallbackHelper, base::MessageLoop::current()->task_runner(),
             base::Bind(&HTMLElement::OnUiNavBlur, base::AsWeakPtr(this))),
         base::Bind(
-            base::IgnoreResult(&base::SingleThreadTaskRunner::PostTask),
-            base::Unretained(base::MessageLoop::current()->task_runner().get()),
-            FROM_HERE,
+            &UiNavCallbackHelper, base::MessageLoop::current()->task_runner(),
             base::Bind(&HTMLElement::OnUiNavFocus, base::AsWeakPtr(this))),
         base::Bind(
-            base::IgnoreResult(&base::SingleThreadTaskRunner::PostTask),
-            base::Unretained(base::MessageLoop::current()->task_runner().get()),
-            FROM_HERE,
+            &UiNavCallbackHelper, base::MessageLoop::current()->task_runner(),
             base::Bind(&HTMLElement::OnUiNavScroll, base::AsWeakPtr(this))));
     ui_nav_item_->SetDir(ui_nav_item_dir);
+    if (ui_nav_focus_duration_) {
+      ui_nav_item_->SetFocusDuration(*ui_nav_focus_duration_);
+    }
+
+    node_document()->AddUiNavigationElement(this);
+    node_document()->set_ui_nav_needs_layout(true);
+    InvalidateLayoutBoxRenderTreeNodes();
+    if (layout_boxes_) {
+      layout_boxes_->SetUiNavItem(ui_nav_item_);
+    }
   } else if (ui_nav_item_) {
     // This navigation item is no longer relevant.
+    ReleaseUiNavigationItem();
+    InvalidateLayoutBoxRenderTreeNodes();
+    if (layout_boxes_) {
+      layout_boxes_->SetUiNavItem(ui_nav_item_);
+    }
+  }
+}
+
+void HTMLElement::ReleaseUiNavigationItem() {
+  if (ui_nav_item_) {
+    // Disable the UI navigation item so it won't receive anymore callbacks
+    // while being released.
+    if (node_document()) {
+      node_document()->RemoveUiNavigationElement(this);
+      node_document()->set_ui_nav_needs_layout(true);
+      if (node_document()->ui_nav_focus_element() == this) {
+        if (node_document()->TrySetUiNavFocusElement(nullptr,
+                                                     SbTimeGetMonotonicNow())) {
+          ui_nav_item_->UnfocusAll();
+        }
+      }
+    }
     ui_nav_item_->SetEnabled(false);
     ui_nav_item_ = nullptr;
   }
@@ -2168,9 +2296,27 @@ void HTMLElement::UpdateCachedBackgroundImagesFromComputedStyle() {
   }
 }
 
+void HTMLElement::GetLoadTimingInfoAndCreateResourceTiming() {
+  if (html_element_context()->performance() == nullptr) return;
+  for (auto& cached_background_image : cached_background_images_) {
+    scoped_refptr<loader::CachedResourceBase> cached_image =
+        cached_background_image->GetCachedResource();
+    if (cached_image == nullptr) continue;
+
+    if (!cached_image->get_resource_timing_created_flag()) {
+      html_element_context()->performance()->CreatePerformanceResourceTiming(
+          cached_image->GetLoadTimingInfo(),
+          kPerformanceResourceTimingInitiatorType, cached_image->url().spec());
+      cached_image->set_resource_timing_created_flag(true);
+    }
+  }
+}
+
 void HTMLElement::OnBackgroundImageLoaded() {
   node_document()->RecordMutation();
   InvalidateLayoutBoxRenderTreeNodes();
+  // GetLoadTimingInfo from cached resource and create resource timing.
+  GetLoadTimingInfoAndCreateResourceTiming();
 }
 
 }  // namespace dom

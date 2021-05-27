@@ -26,7 +26,6 @@
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/base64.h"
 #include "cobalt/dom/camera_3d.h"
-#include "cobalt/dom/console.h"
 #include "cobalt/dom/device_orientation_event.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_settings.h"
@@ -82,14 +81,6 @@ class Window::RelayLoadEvent : public DocumentObserver {
   DISALLOW_COPY_AND_ASSIGN(RelayLoadEvent);
 };
 
-namespace {
-// Ensure that the timer resolution is at the lowest 20 microseconds in
-// order to mitigate potential Spectre-related attacks.  This is following
-// Mozilla's lead as described here:
-//   https://www.mozilla.org/en-US/security/advisories/mfsa2018-01/
-const int64_t kPerformanceTimerMinResolutionInMicroseconds = 20;
-}  // namespace
-
 Window::Window(
     script::EnvironmentSettings* settings, const ViewportSize& view_size,
     base::ApplicationState initial_application_state,
@@ -124,7 +115,6 @@ Window::Window(
     const base::Closure& window_minimize_callback,
     OnScreenKeyboardBridge* on_screen_keyboard_bridge,
     const scoped_refptr<input::Camera3D>& camera_3d,
-    const scoped_refptr<MediaSession>& media_session,
     const OnStartDispatchEventCallback& on_start_dispatch_event_callback,
     const OnStopDispatchEventCallback& on_stop_dispatch_event_callback,
     const ScreenshotManager::ProvideScreenshotFunctionCallback&
@@ -146,6 +136,7 @@ Window::Window(
 #if defined(ENABLE_TEST_RUNNER)
       test_runner_(new TestRunner()),
 #endif  // ENABLE_TEST_RUNNER
+      performance_(new Performance(settings, MakePerformanceClock(clock_type))),
       html_element_context_(new HTMLElementContext(
           settings, fetcher_factory, loader_factory, css_parser, dom_parser,
           can_play_type_handler, web_media_player_factory, script_runner,
@@ -154,8 +145,8 @@ Window::Window(
           reduced_image_cache_capacity_manager, remote_typeface_cache,
           mesh_cache, dom_stat_tracker, font_language_script,
           initial_application_state, synchronous_loader_interrupt,
-          enable_inline_script_warnings, video_playback_rate_multiplier)),
-      performance_(new Performance(MakePerformanceClock(clock_type))),
+          performance_.get(), enable_inline_script_warnings,
+          video_playback_rate_multiplier)),
       ALLOW_THIS_IN_INITIALIZER_LIST(document_(new Document(
           html_element_context_.get(),
           Document::Options(
@@ -168,11 +159,10 @@ Window::Window(
               csp_insecure_allowed_token, dom_max_element_depth)))),
       document_loader_(nullptr),
       history_(new History()),
-      navigator_(new Navigator(settings, user_agent, language, media_session,
+      navigator_(new Navigator(settings, user_agent, language,
                                captions, script_value_factory)),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           relay_on_load_event_(new RelayLoadEvent(this))),
-      console_(new Console(execution_state)),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           window_timers_(new WindowTimers(this, debugger_hooks()))),
       ALLOW_THIS_IN_INITIALIZER_LIST(animation_frame_request_callback_list_(
@@ -206,7 +196,7 @@ Window::Window(
 #if !defined(ENABLE_TEST_RUNNER)
 #endif
   document_->AddObserver(relay_on_load_event_.get());
-  html_element_context_->page_visibility_state()->AddObserver(this);
+  html_element_context_->application_lifecycle_state()->AddObserver(this);
   SetCamera3D(camera_3d);
 
   // Document load start is deferred from this constructor so that we can be
@@ -247,7 +237,7 @@ scoped_refptr<base::BasicClock> Window::MakePerformanceClock(
       return new base::MinimumResolutionClock(
           new base::SystemMonotonicClock(),
           base::TimeDelta::FromMicroseconds(
-              kPerformanceTimerMinResolutionInMicroseconds));
+              Performance::kPerformanceTimerMinResolutionInMicroseconds));
     } break;
   }
   NOTREACHED();
@@ -464,8 +454,6 @@ scoped_refptr<speech::SpeechSynthesis> Window::speech_synthesis() const {
   return speech_synthesis_;
 }
 
-const scoped_refptr<Console>& Window::console() const { return console_; }
-
 const scoped_refptr<Camera3D>& Window::camera_3d() const { return camera_3d_; }
 
 #if defined(ENABLE_TEST_RUNNER)
@@ -546,7 +534,8 @@ void Window::InjectEvent(const scoped_refptr<Event>& event) {
 }
 
 void Window::SetApplicationState(base::ApplicationState state) {
-  html_element_context_->page_visibility_state()->SetApplicationState(state);
+  html_element_context_->application_lifecycle_state()->SetApplicationState(
+      state);
 }
 
 bool Window::ReportScriptError(const script::ErrorReport& error_report) {
@@ -627,8 +616,8 @@ void Window::SetSize(ViewportSize size) {
   // This will cause layout invalidation.
   document_->SetViewport(viewport_size_);
 
-  if (html_element_context_->page_visibility_state()->GetVisibilityState() ==
-      kVisibilityStateVisible) {
+  if (html_element_context_->application_lifecycle_state()
+          ->GetVisibilityState() == kVisibilityStateVisible) {
     DispatchEvent(new Event(base::Tokens::resize()));
   } else {
     is_resize_event_pending_ = true;
@@ -652,16 +641,28 @@ void Window::OnVisibilityStateChanged(VisibilityState visibility_state) {
   }
 }
 
+void Window::OnFrozennessChanged(bool is_frozen) {
+  // Ignored by this class.
+}
+
 void Window::OnDocumentRootElementUnableToProvideOffsetDimensions() {
   DLOG(WARNING) << "Document root element unable to provide offset dimensions!";
   // If the root element was unable to provide its dimensions as a result of
   // the app being in a visibility state that disables layout, then prepare a
   // pending resize event, so that the resize will occur once layouts are again
   // available.
-  if (html_element_context_->page_visibility_state()->GetVisibilityState() !=
-      kVisibilityStateVisible) {
+  if (html_element_context_->application_lifecycle_state()
+          ->GetVisibilityState() != kVisibilityStateVisible) {
     is_resize_event_pending_ = true;
   }
+}
+
+void Window::OnWindowOnOnlineEvent() {
+  DispatchEvent(new Event(base::Tokens::online()));
+}
+
+void Window::OnWindowOnOfflineEvent() {
+  DispatchEvent(new Event(base::Tokens::offline()));
 }
 
 void Window::OnStartDispatchEvent(const scoped_refptr<dom::Event>& event) {
@@ -690,7 +691,6 @@ void Window::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(document_);
   tracer->Trace(history_);
   tracer->Trace(navigator_);
-  tracer->Trace(console_);
   tracer->Trace(camera_3d_);
   tracer->Trace(crypto_);
   tracer->Trace(speech_synthesis_);
@@ -700,12 +700,18 @@ void Window::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(on_screen_keyboard_);
 }
 
-void Window::CacheSplashScreen(const std::string& content) {
+const scoped_refptr<media_session::MediaSession>
+    Window::media_session() const {
+  return navigator_->media_session();
+}
+
+void Window::CacheSplashScreen(const std::string& content,
+                               const base::Optional<std::string>& topic) {
   if (splash_screen_cache_callback_.is_null()) {
     return;
   }
   DLOG(INFO) << "Caching splash screen for URL " << location()->url();
-  splash_screen_cache_callback_.Run(location()->url(), content);
+  splash_screen_cache_callback_.Run(content, topic);
 }
 
 const scoped_refptr<OnScreenKeyboard>& Window::on_screen_keyboard() const {
@@ -718,7 +724,7 @@ Window::~Window() {
   if (ui_nav_root_) {
     ui_nav_root_->SetEnabled(false);
   }
-  html_element_context_->page_visibility_state()->RemoveObserver(this);
+  html_element_context_->application_lifecycle_state()->RemoveObserver(this);
 }
 
 void Window::FireHashChangeEvent() {

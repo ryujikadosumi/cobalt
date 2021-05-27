@@ -67,7 +67,7 @@ class Application {
     // BLUR event from Started or REVEAL event from Concealed.
     kStateBlurred,
 
-    // The background-invisible state after receving a CONCEAL event from
+    // The background-invisible state after receiving a CONCEAL event from
     // Blurred or UNFREEZE event from Frozen.
     kStateConcealed,
 
@@ -192,9 +192,7 @@ class Application {
   int Run(int argc, char** argv, const char* link_data) {
     return Run(CommandLine(argc, argv), link_data);
   }
-  int Run(int argc, char** argv) {
-    return Run(CommandLine(argc, argv));
-  }
+  int Run(int argc, char** argv) { return Run(CommandLine(argc, argv)); }
 
 // Prevents GetCommandLine from being redefined.  For example, Windows
 // defines it to GetCommandLineW, which causes link errors.
@@ -324,14 +322,12 @@ class Application {
   // Injects an event of type kSbEventTypeLowMemory to the application.
   void InjectLowMemoryEvent();
 
-#if SB_API_VERSION >= 8
   // Inject a window size change event.
   //
   // |context|: A context value to pass to |callback| on event completion. Must
   // not be NULL if callback is not NULL.
   // |callback|: A function to call on event completion, from the main thread.
   void WindowSizeChanged(void* context, EventHandledCallback callback);
-#endif  // SB_API_VERSION >= 8
 
   // Schedules an event into the event queue.  May be called from an external
   // thread.

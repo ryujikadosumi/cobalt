@@ -22,7 +22,6 @@
 #include "base/strings/stringprintf.h"
 #include "cobalt/base/event_dispatcher.h"
 #include "cobalt/system_window/input_event.h"
-#include "starboard/double.h"
 #include "starboard/system.h"
 
 namespace cobalt {
@@ -33,7 +32,7 @@ SystemWindow* g_the_window = NULL;
 
 int Round(const float f) {
   double d(f + 0.5f);
-  return static_cast<int>(SbDoubleFloor(d));
+  return static_cast<int>(floor(d));
 }
 
 }  // namespace
@@ -76,11 +75,7 @@ math::Size SystemWindow::GetWindowSize() const {
 }
 
 float SystemWindow::GetDiagonalSizeInches() const {
-#if SB_API_VERSION >= 11
   return SbWindowGetDiagonalSizeInInches(window_);
-#else
-  return 0.f;
-#endif
 }
 
 float SystemWindow::GetDevicePixelRatio() const {

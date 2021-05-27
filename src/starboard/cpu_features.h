@@ -29,8 +29,6 @@
 #include "starboard/export.h"
 #include "starboard/types.h"
 
-#if SB_API_VERSION >= 11
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -166,7 +164,7 @@ typedef struct SbCPUFeaturesX86 {
   //     valid flags depends of specific architecture. Below are processor
   //     feature flags valid on x86 and x86_64
   //
-  //     See kernal source:
+  //     See kernel source:
   //     https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/
   //     tree/arch/x86/include/asm/cpufeatures.h
   // ---------------------------------------------------------------------
@@ -329,5 +327,4 @@ SB_EXPORT bool SbCPUFeaturesGet(SbCPUFeatures* features);
 }  // extern "C"
 #endif
 
-#endif  // SB_API_VERSION >= 11
 #endif  // STARBOARD_CPU_FEATURES_H_

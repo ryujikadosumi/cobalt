@@ -1,3 +1,4 @@
+#!/usr/bin/env python2
 # Copyright (c) 2013 Google Inc. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -77,18 +78,22 @@ is_linux = platform.system() == 'Linux'
 is_windows = platform.system() == 'Windows'
 
 microsoft_flavors = [
-    'win', 'win-win32', 'win-win32-lib',
+    'win',
+    'win-win32',
+    'win-win32-lib',
 ]
 sony_flavors = []
+nintendo_flavors = []
 
 try:
   import private_ninja_flavors
   microsoft_flavors += private_ninja_flavors.PrivateMicrosoftFlavors()
   sony_flavors += private_ninja_flavors.PrivateSonyFlavors()
+  nintendo_flavors += private_ninja_flavors.PrivateNintendoFlavors()
 except ImportError:
   pass
 
-windows_host_flavors = microsoft_flavors + sony_flavors
+windows_host_flavors = microsoft_flavors + sony_flavors + nintendo_flavors
 
 
 def GetToolchainOrNone(flavor):
@@ -139,8 +144,7 @@ def StripPrefix(arg, prefix):
 def GetGeneratorVariables(flavor):
   generator_variables = copy.copy(generator_default_variables)
   if GetToolchainOrNone(flavor):
-    GetToolchainOrNone(
-        flavor).SetAdditionalGypVariables(generator_variables)
+    GetToolchainOrNone(flavor).SetAdditionalGypVariables(generator_variables)
   else:
     CalculateVariables(generator_variables, {'flavor': flavor})
   return generator_variables
@@ -155,7 +159,7 @@ def QuoteShellArgument(arg, flavor):
     return arg  # No quoting necessary.
   if GetToolchainOrNone(flavor):
     return GetToolchainOrNone(flavor).QuoteForRspFile(arg)
-  elif flavor in sony_flavors:
+  elif flavor in sony_flavors or flavor in nintendo_flavors:
     # Escape double quotes.
     return '"' + arg.replace('\"', '\\\"') + '"'
   return "'" + arg.replace("'", "'" + '"\'"' + "'") + "'"
@@ -163,17 +167,21 @@ def QuoteShellArgument(arg, flavor):
 
 def Define(d, flavor):
   """Takes a preprocessor define and returns a -D parameter that's ninja- and
-  shell-escaped."""
+
+  shell-escaped.
+  """
 
   return QuoteShellArgument(ninja_syntax.escape('-D' + d), flavor)
 
 
 def InvertRelativePath(path):
   """Given a relative path like foo/bar, return the inverse relative path:
+
   the path from the relative path back to the origin dir.
 
   E.g. os.path.normpath(os.path.join(path, InvertRelativePath(path)))
-  should always produce the empty string."""
+  should always produce the empty string.
+  """
 
   if not path:
     return path
@@ -238,17 +246,23 @@ class Target:
 
   def PreActionInput(self, flavor):
     """Return the path, if any, that should be used as a dependency of
-    any dependent action step."""
+
+    any dependent action step.
+    """
     return self.FinalOutput() or self.preaction_stamp
 
   def PreCompileInput(self):
     """Return the path, if any, that should be used as a dependency of
-    any dependent compile step."""
+
+    any dependent compile step.
+    """
     return self.actions_stamp or self.precompile_stamp
 
   def FinalOutput(self):
     """Return the last output of the target, which depends on all prior
-    steps."""
+
+    steps.
+    """
     return self.bundle or self.binary or self.actions_stamp
 
 
@@ -372,9 +386,11 @@ class NinjaWriter:
 
   def GypPathToNinja(self, path, env=None):
     """Translate a gyp path to a ninja path, optionally expanding environment
+
     variable references in |path| with |env|.
 
-    See the above discourse on path conversions."""
+    See the above discourse on path conversions.
+    """
     if env:
       if self.flavor == 'mac':
         path = gyp.xcode_emulation.ExpandEnvVars(path, env)
@@ -406,7 +422,8 @@ class NinjaWriter:
     of the target.  This is necessary when e.g. compiling the same
     path twice for two separate output targets.
 
-    See the above discourse on path conversions."""
+    See the above discourse on path conversions.
+    """
 
     path = self.ExpandSpecial(path)
     assert not path.startswith('$'), path
@@ -436,9 +453,11 @@ class NinjaWriter:
 
   def WriteCollapsedDependencies(self, name, targets):
     """Given a list of targets, return a path for a single file
+
     representing the result of building all the targets or None.
 
-    Uses a stamp file if necessary."""
+    Uses a stamp file if necessary.
+    """
 
     assert targets == filter(None, targets), targets
     if len(targets) == 0:
@@ -459,7 +478,8 @@ class NinjaWriter:
 
     Returns a Target object, which represents the output paths for this spec.
     Returns None if there are no outputs (e.g. a settings-only 'none' type
-    target)."""
+    target).
+    """
 
     self.config_name = config_name
     self.name = spec['target_name']
@@ -474,7 +494,7 @@ class NinjaWriter:
     if self.flavor == 'mac':
       self.xcode_settings = gyp.xcode_emulation.XcodeSettings(spec)
     if (self.flavor in windows_host_flavors and is_windows):
-      if self.flavor in sony_flavors:
+      if self.flavor in sony_flavors or self.flavor in nintendo_flavors:
         self.msvs_settings = gyp.msvs_emulation.MsvsSettings(
             spec, generator_flags)
         arch = self.msvs_settings.GetArch(config_name)
@@ -583,8 +603,11 @@ class NinjaWriter:
     return self.target
 
   def _WinIdlRule(self, source, prebuild, outputs):
-    """Handle the implicit VS .idl rule for one source file. Fills |outputs|
-    with files that are generated."""
+    """Handle the implicit VS .idl rule for one source file.
+
+    Fills |outputs|
+    with files that are generated.
+    """
     outdir, output, vars, flags = GetToolchainOrNone(
         self.flavor).GetCompilerSettings().GetIdlBuildData(
             source, self.config_name)
@@ -621,8 +644,11 @@ class NinjaWriter:
 
   def WriteActionsRulesCopies(self, spec, extra_sources, prebuild,
                               mac_bundle_depends):
-    """Write out the Actions, Rules, and Copies steps.  Return a path
-    representing the outputs of these steps."""
+    """Write out the Actions, Rules, and Copies steps.
+
+    Return a path
+    representing the outputs of these steps.
+    """
     outputs = []
     extra_mac_bundle_resources = []
 
@@ -660,8 +686,10 @@ class NinjaWriter:
       return '%s %s: %s' % (verb, self.name, fallback)
 
   def IsCygwinRule(self, action):
-    if self.flavor in sony_flavors:
-      return str(action.get('msvs_cygwin_shell', 1)) != '0'
+    if self.flavor in sony_flavors or self.flavor in nintendo_flavors:
+      value = str(action.get('msvs_cygwin_shell', 0)) != '0'
+      if value:
+        raise Exception('Cygwin usage is no longer allowed in Cobalt Gyp')
     return False
 
   def WriteActions(self, actions, extra_sources, prebuild,
@@ -776,8 +804,8 @@ class NinjaWriter:
 
         inputs = [self.GypPathToNinja(i, env) for i in inputs]
         outputs = [self.GypPathToNinja(o, env) for o in outputs]
-        extra_bindings.append(('unique_name',
-                               hashlib.md5(outputs[0]).hexdigest()))
+        extra_bindings.append(
+            ('unique_name', hashlib.md5(outputs[0]).hexdigest()))
         self.ninja.build(
             outputs,
             rule_name,
@@ -893,11 +921,11 @@ class NinjaWriter:
     shell = GetShell(self.flavor)
 
     if self.toolset == 'target':
-      toolchain = GetTargetToolchain(self.flavor, spec=spec,
-                                     config_name=config_name)
+      toolchain = GetTargetToolchain(
+          self.flavor, spec=spec, config_name=config_name)
     else:
-      toolchain = GetHostToolchain(self.flavor, spec=spec,
-                                   config_name=config_name)
+      toolchain = GetHostToolchain(
+          self.flavor, spec=spec, config_name=config_name)
 
     defines = config.get('defines', [])
     include_dirs = [
@@ -1005,8 +1033,7 @@ class NinjaWriter:
           gyp_path_to_ninja=self.GypPathToNinja,
           expand_special=self.ExpandSpecial,
           gyp_path_to_unique_output=self.GypPathToUniqueOutput,
-          compute_output_file_name=self.ComputeOutputFileName
-      )
+          compute_output_file_name=self.ComputeOutputFileName)
     else:
       toolchain = GetHostToolchain(
           self.flavor,
@@ -1015,8 +1042,7 @@ class NinjaWriter:
           gyp_path_to_ninja=self.GypPathToNinja,
           expand_special=self.ExpandSpecial,
           gyp_path_to_unique_output=self.GypPathToUniqueOutput,
-          compute_output_file_name=self.ComputeOutputFileName
-      )
+          compute_output_file_name=self.ComputeOutputFileName)
 
     shell = GetShell(self.flavor)
     extra_bindings = []
@@ -1037,8 +1063,8 @@ class NinjaWriter:
       libraries = spec.get(libraries_keyword, []) + config.get(
           libraries_keyword, [])
 
-      ldflags_executable = GetConfigFlags(
-          config, self.toolset, 'ldflags_executable')
+      ldflags_executable = GetConfigFlags(config, self.toolset,
+                                          'ldflags_executable')
       if not ldflags_executable:
         ldflags_executable = GetConfigFlags(config, self.toolset, 'ldflags')
 
@@ -1049,8 +1075,8 @@ class NinjaWriter:
       self.ninja.variable('{0}_flags'.format(rule_name),
                           shell.Join(executable_linker_flags))
     elif target_type == 'shared_library':
-      shared_library_linker = FindFirstInstanceOf(
-          abstract.SharedLibraryLinker, toolchain)
+      shared_library_linker = FindFirstInstanceOf(abstract.SharedLibraryLinker,
+                                                  toolchain)
       assert shared_library_linker, (
           'Toolchain must provide shared library linker '
           'for {0} platform.').format(self.toolset)
@@ -1079,12 +1105,11 @@ class NinjaWriter:
       extra_bindings.append(('soname', os.path.split(output)[1]))
       extra_bindings.append(('dll', output))
       if '/NOENTRY' not in shared_library_linker_flags:
-        extra_bindings.append(('implibflag',
-                               '/IMPLIB:%s' % output + '.lib'))
+        extra_bindings.append(('implibflag', '/IMPLIB:%s' % output + '.lib'))
 
     else:
-      raise Exception('Target type {0} is not supported for target {1}.'
-                      .format(target_type, spec['target_name']))
+      raise Exception('Target type {0} is not supported for target {1}.'.format(
+          target_type, spec['target_name']))
 
     order_only_deps = set()
 
@@ -1144,15 +1169,13 @@ class NinjaWriter:
             self.flavor,
             spec=spec,
             config_name=config_name,
-            gyp_path_to_ninja=self.GypPathToNinja
-        )
+            gyp_path_to_ninja=self.GypPathToNinja)
       else:
         toolchain = GetHostToolchain(
             self.flavor,
             spec=spec,
             config_name=config_name,
-            gyp_path_to_ninja=self.GypPathToNinja
-        )
+            gyp_path_to_ninja=self.GypPathToNinja)
 
       shell = GetShell(self.flavor)
       static_linker = FindFirstInstanceOf(abstract.StaticLinker, toolchain)
@@ -1228,8 +1251,10 @@ class NinjaWriter:
                           output_binary,
                           is_command_start=False):
     """Returns a shell command that runs all the postbuilds, and removes
+
     |output| if any of them fails. If |is_command_start| is False, then the
-    returned string will start with ' && '."""
+    returned string will start with ' && '.
+    """
     if not self.xcode_settings or spec['type'] == 'none' or not output:
       return ''
     output = QuoteShellArgument(output, self.flavor)
@@ -1265,8 +1290,10 @@ class NinjaWriter:
 
   def ComputeExportEnvString(self, env):
     """Given an environment, returns a string looking like
+
         'export FOO=foo; export BAR="${FOO} bar;'
-    that exports |env| to the shell."""
+    that exports |env| to the shell.
+    """
     export_str = []
     for k, v in env:
       export_str.append(
@@ -1388,7 +1415,8 @@ class NinjaWriter:
     """Write out a new ninja "rule" statement for a given command.
 
     Returns the name of the new rule, and a copy of |args| with variables
-    expanded."""
+    expanded.
+    """
 
     if self.flavor == 'win':
       args = [
@@ -1428,11 +1456,8 @@ class NinjaWriter:
     if (self.flavor in windows_host_flavors and is_windows):
       rspfile = rule_name + '.$unique_name.rsp'
       # The cygwin case handles this inside the bash sub-shell.
-      run_in = '' if is_cygwin else ' ' + self.build_to_base
-      if is_cygwin:
-        rspfile_content = self.msvs_settings.BuildCygwinBashCommandLine(
-            args, self.build_to_base)
-      elif self.flavor in sony_flavors:
+      run_in = ' ' + self.build_to_base
+      if self.flavor in sony_flavors or self.flavor in nintendo_flavors:
         rspfile_content = gyp.msvs_emulation.EncodeRspFileList(args)
       else:
         rspfile_content = GetToolchainOrNone(
@@ -1483,19 +1508,13 @@ def CalculateVariables(default_variables, params):
     global generator_extra_sources_for_rules
     generator_extra_sources_for_rules = getattr(
         xcode_generator, 'generator_extra_sources_for_rules', [])
-  elif flavor in sony_flavors:
-    if is_windows:
-      # This is required for BuildCygwinBashCommandLine() to work.
-      import gyp.generator.msvs as msvs_generator
-      generator_additional_non_configuration_keys = getattr(
-          msvs_generator, 'generator_additional_non_configuration_keys', [])
-      generator_additional_path_sections = getattr(
-          msvs_generator, 'generator_additional_path_sections', [])
-
-    default_variables['EXECUTABLE_SUFFIX'] = '.elf'
+  elif flavor in sony_flavors or flavor in nintendo_flavors:
+    if flavor in sony_flavors:
+      default_variables['EXECUTABLE_SUFFIX'] = '.elf'
+    else:
+      default_variables['EXECUTABLE_SUFFIX'] = '.exe'
     default_variables['SHARED_LIB_PREFIX'] = 'lib'
     default_variables['SHARED_LIB_SUFFIX'] = '.so'
-
     # Copy additional generator configuration data from VS, which is shared
     # by the Windows Ninja generator.
     import gyp.generator.msvs as msvs_generator
@@ -1511,8 +1530,8 @@ def CalculateVariables(default_variables, params):
     default_variables.setdefault('SHARED_LIB_SUFFIX', '.so')
     default_variables.setdefault('SHARED_LIB_DIR',
                                  os.path.join('$!PRODUCT_DIR', 'lib'))
-    default_variables.setdefault('LIB_DIR', os.path.join(
-        '$!PRODUCT_DIR', 'obj'))
+    default_variables.setdefault('LIB_DIR',
+                                 os.path.join('$!PRODUCT_DIR', 'obj'))
 
 
 def ComputeOutputDir(params):
@@ -1549,6 +1568,7 @@ def OpenOutput(path, mode='w'):
   except OSError:
     pass
   return open(path, mode)
+
 
 def MaybeWritePathVariable(ninja, tool, toolset):
   if tool.GetPath():
@@ -1654,9 +1674,22 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params,
           toplevel_build, generator_flags, OpenOutput)
     else:
       gyp.msvs_emulation.GenerateEnvironmentFiles(toplevel_build,
-          generator_flags, OpenOutput)
-    master_ninja.variable('python', sys.executable)
-    master_ninja.newline()
+                                                  generator_flags, OpenOutput)
+
+  # Write python executables to the master ninja.
+  # Let 'python' resolve to what environment is active.
+  # Assume this file is executed using python2.
+  master_ninja.variable('python2', sys.executable)
+  master_ninja.newline()
+
+  # Don't write python3 exectuable until we ensure it's in docker containers.
+  #
+  # python3_executable = 'py -3' if is_windows else 'python3'
+  # cmd = ('{} -c "import os; import sys; '
+  #        'print(os.path.dirname(sys.executable))"').format(python3_executable)
+  # python3_location = subprocess.check_output(cmd, shell=True).strip()
+  # master_ninja.variable('python3', python3_location)
+  # master_ninja.newline()
 
   all_targets = set()
   for build_file in params['build_files']:
@@ -1749,7 +1782,7 @@ def PerformBuild(data, configurations, params):
   for config in configurations:
     builddir = os.path.join(options.toplevel_dir, 'out', config)
     arguments = ['ninja', '-C', builddir]
-    print 'Building [%s]: %s' % (config, arguments)
+    print('Building [%s]: %s' % (config, arguments))
     subprocess.check_call(arguments)
 
 
@@ -1777,10 +1810,10 @@ def GenerateOutput(target_list, target_dicts, data, params):
         pool = multiprocessing.Pool(len(config_names))
         arglists = []
         for config_name in config_names:
-          arglists.append((target_list, target_dicts, data, params,
-                           config_name))
+          arglists.append(
+              (target_list, target_dicts, data, params, config_name))
           pool.map(CallGenerateOutputForConfig, arglists)
-      except KeyboardInterrupt, e:
+      except KeyboardInterrupt as e:
         pool.terminate()
         raise e
     else:

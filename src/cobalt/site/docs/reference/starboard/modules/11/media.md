@@ -108,7 +108,7 @@ specific values start at 1000.
     Limited Rec. 709 color range with RGB values ranging from 16 to 235.
 *   `kSbMediaRangeIdFull`
 
-    Full RGB color range with RGB valees from 0 to 255.
+    Full RGB color range with RGB values from 0 to 255.
 *   `kSbMediaRangeIdDerived`
 
     Range is defined by TransferId/MatrixId.
@@ -659,6 +659,8 @@ Indicates whether output copy protection is currently enabled on all capable
 outputs. If `true`, then non-protection-capable outputs are expected to be
 blanked.
 
+presubmit: allow sb_export mismatch
+
 #### Declaration ####
 
 ```
@@ -712,9 +714,10 @@ change the current value.
 
 `enabled`: Indicates whether output protection is enabled (`true`) or disabled.
 
+presubmit: allow sb_export mismatch
+
 #### Declaration ####
 
 ```
 bool SbMediaSetOutputProtection(bool enabled)
 ```
-

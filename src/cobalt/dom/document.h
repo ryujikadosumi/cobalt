@@ -20,6 +20,8 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "base/callback.h"
 #include "base/memory/ref_counted.h"
@@ -37,6 +39,7 @@
 #include "cobalt/cssom/selector_tree.h"
 #include "cobalt/cssom/style_sheet_list.h"
 #include "cobalt/cssom/viewport_size.h"
+#include "cobalt/dom/application_lifecycle_state.h"
 #include "cobalt/dom/csp_delegate_type.h"
 #include "cobalt/dom/document_ready_state.h"
 #include "cobalt/dom/document_timeline.h"
@@ -45,7 +48,6 @@
 #include "cobalt/dom/intersection_observer_task_manager.h"
 #include "cobalt/dom/location.h"
 #include "cobalt/dom/node.h"
-#include "cobalt/dom/page_visibility_state.h"
 #include "cobalt/dom/pointer_state.h"
 #include "cobalt/dom/visibility_state.h"
 #include "cobalt/math/size.h"
@@ -53,6 +55,7 @@
 #include "cobalt/network_bridge/net_poster.h"
 #include "cobalt/script/exception_state.h"
 #include "cobalt/script/wrappable.h"
+#include "starboard/time.h"
 #include "url/gurl.h"
 
 namespace cobalt {
@@ -69,6 +72,7 @@ class HTMLElement;
 class HTMLElementContext;
 class HTMLHeadElement;
 class HTMLHtmlElement;
+class HTMLMediaElement;
 class HTMLScriptElement;
 class Location;
 class Text;
@@ -95,7 +99,7 @@ class DocumentObserver : public base::CheckedObserver {
 //   https://www.w3.org/TR/dom/#document
 class Document : public Node,
                  public cssom::MutationObserver,
-                 public PageVisibilityState::Observer {
+                 public ApplicationLifecycleState::Observer {
  public:
   struct Options {
     Options()
@@ -341,6 +345,29 @@ class Document : public Node,
   // Returns whether the computed style is valid after the call.
   bool UpdateComputedStyleOnElementAndAncestor(HTMLElement* element);
 
+  // Called periodically to update the UI navigation system.
+  void UpdateUiNavigation();
+
+  // Track UI navigation system's focus element.
+  const void* ui_nav_focus_element() const { return ui_nav_focus_element_; }
+  bool TrySetUiNavFocusElement(const void* focus_element, SbTimeMonotonic time);
+
+  // Track HTML elements that are UI navigation items. This facilitates updating
+  // their layout information as needed.
+  void AddUiNavigationElement(HTMLElement* element) {
+    ui_nav_elements_.insert(element);
+  }
+  void RemoveUiNavigationElement(HTMLElement* element) {
+    ui_nav_elements_.erase(element);
+  }
+  const std::unordered_set<HTMLElement*>& ui_navigation_elements() const {
+    return ui_nav_elements_;
+  }
+  void set_ui_nav_needs_layout(bool needs_layout) {
+    ui_nav_needs_layout_ = needs_layout;
+  }
+  bool ui_nav_needs_layout() const { return ui_nav_needs_layout_; }
+
   // Manages the clock used by Web Animations.
   //     https://www.w3.org/TR/web-animations
   // This clock is also used for requestAnimationFrame() callbacks, according
@@ -402,7 +429,7 @@ class Document : public Node,
   // Page Visibility fields.
   bool hidden() const { return visibility_state() == kVisibilityStateHidden; }
   VisibilityState visibility_state() const {
-    return page_visibility_state()->GetVisibilityState();
+    return application_lifecycle_state()->GetVisibilityState();
   }
   const EventListenerScriptValue* onvisibilitychange() const {
     return GetAttributeEventListener(base::Tokens::visibilitychange());
@@ -411,9 +438,26 @@ class Document : public Node,
     SetAttributeEventListener(base::Tokens::visibilitychange(), event_listener);
   }
 
-  // PageVisibilityState::Observer implementation.
+  // Page Lifecycle fields.
+  const EventListenerScriptValue* onfreeze() const {
+    return GetAttributeEventListener(base::Tokens::freeze());
+  }
+  const EventListenerScriptValue* onresume() const {
+    return GetAttributeEventListener(base::Tokens::resume());
+  }
+  void set_onfreeze(const EventListenerScriptValue& event_listener) {
+    SetAttributeEventListener(base::Tokens::freeze(), event_listener);
+  }
+  void set_onresume(const EventListenerScriptValue& event_listener) {
+    SetAttributeEventListener(base::Tokens::resume(), event_listener);
+  }
+
+  // ApplicationLifecycleState::Observer implementation.
   void OnWindowFocusChanged(bool has_focus) override;
   void OnVisibilityStateChanged(VisibilityState visibility_state) override;
+  void OnFrozennessChanged(bool is_frozen) override;
+
+  bool was_discarded() const { return false; }
 
   PointerState* pointer_state() { return &pointer_state_; }
 
@@ -436,12 +480,12 @@ class Document : public Node,
  protected:
   ~Document() override;
 
-  PageVisibilityState* page_visibility_state() {
-    return html_element_context_->page_visibility_state().get();
+  ApplicationLifecycleState* application_lifecycle_state() {
+    return html_element_context_->application_lifecycle_state().get();
   }
 
-  const PageVisibilityState* page_visibility_state() const {
-    return html_element_context_->page_visibility_state().get();
+  const ApplicationLifecycleState* application_lifecycle_state() const {
+    return html_element_context_->application_lifecycle_state().get();
   }
 
  private:
@@ -462,14 +506,25 @@ class Document : public Node,
 
   bool IsCookieAverseDocument() const;
 
+  // Collect HTML media elements for the preparation of changing the
+  // frozeness of documents.
+  void CollectHTMLMediaElements(
+      std::vector<HTMLMediaElement*>* html_media_elements);
+
+  // https://wicg.github.io/page-lifecycle/#changing-frozenness
+  void FreezeSteps();
+
+  // https://wicg.github.io/page-lifecycle/#changing-frozenness
+  void ResumeSteps();
+
   // Reference to HTML element context.
   HTMLElementContext* const html_element_context_;
 
-  // Explicitly store a weak pointer to the page visibility state object.
-  // It is possible that we destroy the page visibility state object before
-  // Document, during shutdown, so this allows us to handle that situation
-  // more gracefully than crashing.
-  base::WeakPtr<PageVisibilityState> page_visibility_state_;
+  // Explicitly store a weak pointer to the application lifecycle state object.
+  // It is possible that we destroy the application lifecycle state object
+  // before Document, during shutdown, so this allows us to handle that
+  // situation more gracefully than crashing.
+  base::WeakPtr<ApplicationLifecycleState> application_lifecycle_state_;
 
   // Reference to the associated window object.
   Window* window_;
@@ -556,6 +611,30 @@ class Document : public Node,
 
   // Whether or not rendering is currently postponed.
   bool render_postponed_;
+
+  // Whether or not page lifecycle is currently frozen.
+  //   https://wicg.github.io/page-lifecycle/#page-lifecycle
+  bool frozenness_;
+
+  // Indicates whether UI navigation focus needs to be updated.
+  bool ui_nav_focus_needs_update_ = false;
+
+  // Track the current focus of UI navigation. This is only an identifier and
+  // not meant to be dereferenced.
+  const void* ui_nav_focus_element_ = nullptr;
+
+  // Since UI navigation involves multiple threads, use a timestamp to help
+  // filter out obsolete focus changes.
+  SbTimeMonotonic ui_nav_focus_element_update_time_ = 0;
+
+  // Track all HTMLElements in this document which are UI navigation items.
+  // These should be raw pointers to avoid affecting the elements' ref counts.
+  // The elements will explicitly add and remove themselves from this set.
+  std::unordered_set<HTMLElement*> ui_nav_elements_;
+
+  // This specifies whether the UI navigation HTML elements need updating during
+  // layout.
+  bool ui_nav_needs_layout_ = false;
 
   scoped_refptr<IntersectionObserverTaskManager>
       intersection_observer_task_manager_;

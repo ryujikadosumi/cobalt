@@ -110,7 +110,8 @@ const char kInputFuzzerHelp[] =
 
 const char kMemoryTracker[] = "memory_tracker";
 const char kMemoryTrackerHelp[] =
-    "Enables memory tracking by installing the memory tracker on startup.";
+    "Enables memory tracking by installing the memory tracker on startup. Run "
+    "--memory_tracker=help for more info.";
 
 const char kMinCompatibilityVersion[] = "min_compatibility_version";
 const char kMinCompatibilityVersionHelp[] =
@@ -390,6 +391,17 @@ const char kFallbackSplashScreenURLHelp[] =
     "no value is set, the URL in gyp_configuration.gypi or base.gypi will be "
     "used.";
 
+const char kFallbackSplashScreenTopics[] = "fallback_splash_screen_topics";
+const char kFallbackSplashScreenTopicsHelp[] =
+    "Setting this switch defines a mapping of URL 'topics' to splash screen "
+    "URLs or filenames that Cobalt will use in the absence of a web cache, "
+    "(for example, music=music_splash_screen.html&foo=file:///bar.html). If a "
+    "URL is given it should match the format of 'fallback_splash_screen_url'. "
+    "A given filename should exist in the same directory as "
+    "'fallback_splash_screen_url'. If no fallback url exists for the topic of "
+    "the URL used to launch Cobalt, then the value of "
+    "'fallback_splash_screen_url' will be used.";
+
 const char kVersion[] = "version";
 const char kVersionHelp[] = "Prints the current version of Cobalt";
 
@@ -406,7 +418,7 @@ const char kVideoPlaybackRateMultiplierHelp[] =
 
 std::string HelpMessage() {
   std::string help_message;
-  std::map<const char*, const char*> help_map {
+  std::map<std::string, const char*> help_map {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
     {kDebugConsoleMode, kDebugConsoleModeHelp},
         {kDevServersListenIp, kDevServersListenIpHelp},

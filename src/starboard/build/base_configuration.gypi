@@ -36,6 +36,8 @@
       'sb_static_contents_output_data_dir%': '<(PRODUCT_DIR)/content/data',
       'sb_deploy_output_dir%': '<(PRODUCT_DIR)/deploy',
       'sb_evergreen_compatible%': 0,
+      'sb_evergreen_compatible_libunwind%': 0,
+      'sb_evergreen_compatible_lite%': 0,
     },
 
     # Enables the yasm compiler to be used to compile .asm files.
@@ -84,6 +86,12 @@
     # Whether this is an evergreen compatible platform. A compatible platform
     # can run the elf_loader and launch the evergreen build.
     'sb_evergreen_compatible%': '<(sb_evergreen_compatible)',
+
+    # Whether to use the libunwind library on evergreen compatible platform.
+    'sb_evergreen_compatible_libunwind%': '<(sb_evergreen_compatible_libunwind)',
+
+    # Whether to adopt Evergreen Lite on the evergreen compatible platform.
+    'sb_evergreen_compatible_lite%': '<(sb_evergreen_compatible_lite)',
 
     # The operating system of the target, separate from the target_arch. In many
     # cases, an 'unknown' value is fine, but, if set to 'linux', then we can
@@ -215,7 +223,13 @@
             # All the 32 bit CPU architectures v8 supports.
             'compiler_flags_cc_host%': [
               '-m32',
-              '--std=gnu++11',
+              '--std=gnu++14',
+            ],
+            'compiler_flags_host': [
+              '-m32',
+            ],
+            'compiler_flags_host': [
+              '-m32',
             ],
             'linker_flags_host%': [
               '-target', 'i386-unknown-linux-gnu',
@@ -224,7 +238,7 @@
             ],
           }, {
             'compiler_flags_cc_host%': [
-              '--std=gnu++11',
+              '--std=gnu++14',
             ],
             'linker_flags_host%': [
             '-pthread',
@@ -262,10 +276,6 @@
     'cflags_c_host': [ '<@(compiler_flags_c_host)', ],
     'cflags_cc_host': [ '<@(compiler_flags_cc_host)', ],
     'ldflags_host': [ '<@(linker_flags_host)' ],
-
-    # Location of Cygwin which is used by the build system when running on a
-    # Windows platform.
-    'msvs_cygwin_dirs': ['<(DEPTH)/third_party/cygwin'],
 
     # Allows any source file to include files relative to the source tree.
     'include_dirs': [ '<(DEPTH)' ],

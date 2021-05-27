@@ -327,6 +327,8 @@ static SB_C_INLINE int SbStringScanF(const char* buffer,
   return result;
 }
 
+#if SB_API_VERSION < SB_STDLIB_APIS_DEPRECATED_VERSION
+
 // Extracts a string that represents an integer from the beginning of |start|
 // into a signed integer in the given |base|. This function is meant to be a
 // drop-in replacement for |strtol|.
@@ -400,14 +402,10 @@ SB_EXPORT uint64_t SbStringParseUInt64(const char* start,
 //   consumed portion of the string into |out_end|.
 SB_EXPORT double SbStringParseDouble(const char* start, char** out_end);
 
+#endif  // SB_API_VERSION < SB_STDLIB_APIS_DEPRECATED_VERSION
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
-#if defined(__cplusplus) && SB_API_VERSION < 11
-extern "C++" {
-#include "starboard/common/string.h"
-}  // extern "C++"
-#endif  // defined(__cplusplus) && SB_API_VERSION < 11
 
 #endif  // STARBOARD_STRING_H_

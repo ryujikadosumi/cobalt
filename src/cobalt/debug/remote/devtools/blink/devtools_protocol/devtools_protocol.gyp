@@ -18,7 +18,7 @@
 {
   'variables': {
     'sb_pedantic_warnings': 1,
-    'v8_inspector_js_protocol_file': '<(DEPTH)/v8/include/js_protocol.pdl',
+    'v8_inspector_js_protocol_file': '<(DEPTH)/third_party/v8/include/js_protocol.pdl',
   },
   'targets': [
     {
@@ -37,7 +37,7 @@
         'inputs': [ '<(script_path)', '<@(input_files)' ],
         'outputs': [ '<(stamp_file)' ],
         'action': [
-          'python',
+          'python2',
           '<(script_path)',
           '--stamp',
           '<(stamp_file)',
@@ -65,7 +65,7 @@
         'inputs': [ '<(script_path)', '<@(input_files)' ],
         'outputs': [ '<(output_file)' ],
         'action': [
-          'python',
+          'python2',
           '<(script_path)',
           '<@(input_files)',
           '<(output_file)',
