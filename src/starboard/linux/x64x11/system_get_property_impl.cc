@@ -58,8 +58,10 @@ bool GetSystemProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyModelYear:
 #if SB_API_VERSION >= 12
     case kSbSystemPropertySystemIntegratorName:
-#else
+#elif SB_API_VERSION == 11
     case kSbSystemPropertyOriginalDesignManufacturerName:
+#else
+    case kSbSystemPropertyNetworkOperatorName:
 #endif
     case kSbSystemPropertySpeechApiKey:
       return false;
@@ -71,6 +73,7 @@ bool GetSystemProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyPlatformName:
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
 
+#if SB_API_VERSION >= 11
     case kSbSystemPropertyCertificationScope:
       if (kCertificationScope[0] == '\0')
         return false;
@@ -82,6 +85,7 @@ bool GetSystemProperty(SbSystemPropertyId property_id,
         return false;
       return CopyStringAndTestIfSuccess(out_value, value_length,
                                         kBase64EncodedCertificationSecret);
+#endif  // SB_API_VERSION >= 11
 
     default:
       SB_DLOG(WARNING) << __FUNCTION__

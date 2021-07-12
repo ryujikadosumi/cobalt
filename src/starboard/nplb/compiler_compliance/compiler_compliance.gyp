@@ -22,7 +22,6 @@
       ],
       'sources': [
         'cpp14_constexpr.cc',
-        'cpp14_initialization.cc',
       ],
       'dependencies': [
         '<(DEPTH)/starboard/starboard.gyp:starboard',

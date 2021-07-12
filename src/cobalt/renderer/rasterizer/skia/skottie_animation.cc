@@ -15,7 +15,6 @@
 #include "cobalt/renderer/rasterizer/skia/skottie_animation.h"
 
 #include "base/bind.h"
-#include "third_party/skia/include/core/SkRect.h"
 
 namespace cobalt {
 namespace renderer {
@@ -24,7 +23,6 @@ namespace skia {
 
 SkottieAnimation::SkottieAnimation(const char* data, size_t length)
     : last_updated_animation_time_(base::TimeDelta()) {
-  ResetRenderCache();
   skottie::Animation::Builder builder;
   skottie_animation_ = builder.make(data, length);
   animation_size_ = math::Size(skottie_animation_->size().width(),
@@ -32,8 +30,11 @@ SkottieAnimation::SkottieAnimation(const char* data, size_t length)
   json_size_in_bytes_ = builder.getStats().fJsonSize;
 }
 
-void SkottieAnimation::SetAnimationTimeInternal(
-    base::TimeDelta animate_function_time) {
+void SkottieAnimation::SetProperties(LottieProperties properties) {
+  properties_ = properties;
+}
+
+void SkottieAnimation::SetAnimationTime(base::TimeDelta animate_function_time) {
   // Seeking to a particular frame takes precedence over normal playback.
   // Check whether "seek()" has been called but has yet to occur.
   if (seek_counter_ != properties_.seek_counter) {
@@ -74,11 +75,7 @@ void SkottieAnimation::SetAnimationTimeInternal(
     return;
   }
 
-  // Do not update the animation time if it has already reached the last frame.
-  if (is_complete_) {
-    return;
-  }
-
+  DCHECK(properties_.state == LottieState::kPlaying);
   base::TimeDelta current_animation_time = last_updated_animation_time_;
   base::TimeDelta time_elapsed =
       animate_function_time - last_updated_animate_function_time_;
@@ -131,26 +128,9 @@ void SkottieAnimation::SetAnimationTimeInternal(
                                               animate_function_time);
 }
 
-void SkottieAnimation::UpdateRenderCache(SkCanvas* render_target,
-    const math::SizeF& size) {
-  DCHECK(render_target);
-  if (cached_animation_time_ == last_updated_animation_time_) {
-    // The render cache is already up-to-date.
-    return;
-  }
-
-  cached_animation_time_ = last_updated_animation_time_;
-  SkRect bounding_rect = SkRect::MakeWH(size.width(), size.height());
-  render_target->clear(SK_ColorTRANSPARENT);
-  skottie_animation_->render(render_target, &bounding_rect);
-  render_target->flush();
-}
-
 void SkottieAnimation::UpdateAnimationFrameAndAnimateFunctionTimes(
     base::TimeDelta current_animation_time,
     base::TimeDelta current_animate_function_time) {
-  last_updated_animate_function_time_ = current_animate_function_time;
-
   if (current_animation_time == last_updated_animation_time_) {
     return;
   }
@@ -166,6 +146,7 @@ void SkottieAnimation::UpdateAnimationFrameAndAnimateFunctionTimes(
   }
 
   last_updated_animation_time_ = current_animation_time;
+  last_updated_animate_function_time_ = current_animate_function_time;
 }
 
 }  // namespace skia

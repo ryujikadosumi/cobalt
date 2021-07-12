@@ -698,11 +698,6 @@ using shared::starboard::player::filter::CpuVideoFrame;
 ApplicationX11::ApplicationX11()
     : wake_up_atom_(None),
       wm_delete_atom_(None),
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
-      wm_change_state_atom_(None),
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
       composite_event_id_(kSbEventIdInvalid),
       display_(NULL),
       paste_buffer_key_release_pending_(false) {
@@ -959,11 +954,6 @@ bool ApplicationX11::EnsureX() {
 
   wake_up_atom_ = XInternAtom(display_, "WakeUpAtom", 0);
   wm_delete_atom_ = XInternAtom(display_, "WM_DELETE_WINDOW", True);
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
-  wm_change_state_atom_ = XInternAtom(display_, "WM_CHANGE_STATE", True);
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
 
   Composite();
 
@@ -982,11 +972,6 @@ void ApplicationX11::StopX() {
   display_ = NULL;
   wake_up_atom_ = None;
   wm_delete_atom_ = None;
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
-  wm_change_state_atom_ = None;
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
 }
 
 shared::starboard::Application::Event* ApplicationX11::GetPendingEvent() {
@@ -1199,22 +1184,6 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
         Stop(0);
         return NULL;
       }
-
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
-      if (client_message->message_type == wm_change_state_atom_) {
-        SB_DLOG(INFO) << "Received WM_CHANGE_STATE message.";
-        if (x_event->xclient.data.l[0] == IconicState) {
-          Reveal(NULL, NULL);
-          return NULL;
-        } else if (x_event->xclient.data.l[0] == NormalState) {
-          Conceal(NULL, NULL);
-          return NULL;
-        }
-      }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
-
       // Unknown event, ignore.
       return NULL;
     }
@@ -1319,17 +1288,6 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       return new Event(kSbEventTypeInput, data.release(),
                        &DeleteDestructor<SbInputData>);
     }
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
-    case FocusIn: {
-      Focus(NULL, NULL);
-      return NULL;
-    }
-    case FocusOut: {
-      Blur(NULL, NULL);
-      return NULL;
-    }
-#else
     case FocusIn: {
       Unpause(NULL, NULL);
       return NULL;
@@ -1338,8 +1296,6 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       Pause(NULL, NULL);
       return NULL;
     }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
     case ConfigureNotify: {
       XConfigureEvent* x_configure_event =
           reinterpret_cast<XConfigureEvent*>(x_event);

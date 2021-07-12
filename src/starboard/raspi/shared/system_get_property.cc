@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 
+#include "starboard/common/format_string.h"
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 
@@ -142,8 +143,10 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyModelYear:
 #if SB_API_VERSION >= 12
     case kSbSystemPropertySystemIntegratorName:
-#else
+#elif SB_API_VERSION == 11
     case kSbSystemPropertyOriginalDesignManufacturerName:
+#else
+    case kSbSystemPropertyNetworkOperatorName:
 #endif
     case kSbSystemPropertySpeechApiKey:
       return false;
@@ -152,8 +155,16 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       return CopyStringAndTestIfSuccess(out_value, value_length, kFriendlyName);
 
     case kSbSystemPropertyPlatformName: {
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-                                        "X11; Linux armv7l");
+      // Example output: "Raspian Linux armv7l".
+      utsname name;
+
+      if (uname(&name) == -1)
+        return false;
+
+      std::string temp =
+          starboard::FormatString("Raspian %s %s", name.sysname, name.machine);
+
+      return CopyStringAndTestIfSuccess(out_value, value_length, temp.c_str());
     }
 
     default:

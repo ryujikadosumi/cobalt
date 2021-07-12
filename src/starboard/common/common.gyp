@@ -33,6 +33,7 @@
         'file.cc',
         'file.h',
         'flat_map.h',
+        'format_string.h',
         'locked_ptr.h',
         'log.cc',
         'log.h',

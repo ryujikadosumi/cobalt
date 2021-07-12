@@ -827,10 +827,10 @@ bool UDPSocketStarboard::WatchSocket() {
 }
 
 void UDPSocketStarboard::StopWatchingSocket() {
-  if (!write_async_watcher_->watching())
+  if (!read_buf_ && !write_buf_ && !write_async_watcher_->watching())
     return;
-  write_async_watcher_->set_watching(false);
   InternalStopWatchingSocket();
+  write_async_watcher_->set_watching(false);
 }
 
 bool UDPSocketStarboard::InternalWatchSocket() {
@@ -840,10 +840,8 @@ bool UDPSocketStarboard::InternalWatchSocket() {
 }
 
 void UDPSocketStarboard::InternalStopWatchingSocket() {
-  if (!read_buf_ && !write_buf_ && !write_async_watcher_->watching()) {
-    bool ok = socket_watcher_.StopWatchingSocket();
-    DCHECK(ok);
-  }
+  bool ok = socket_watcher_.StopWatchingSocket();
+  DCHECK(ok);
 }
 
 void UDPSocketStarboard::SetMaxPacketSize(size_t max_packet_size) {

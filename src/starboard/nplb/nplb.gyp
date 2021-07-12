@@ -329,6 +329,11 @@
         'copy_nplb_file_tests_data',
       ],
       'conditions': [
+        ['sb_disable_cpp14_audit != 1', {
+          'dependencies': [
+            '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp14_supported',
+          ],
+        }],
         ['sb_evergreen != 1', {
           'sources': [
             # Segfaults or causes unresolved symbols for Cobalt Evergreen.

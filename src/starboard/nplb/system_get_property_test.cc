@@ -83,9 +83,11 @@ TEST(SbSystemGetPropertyTest, ReturnsRequired) {
   BasicTest(kSbSystemPropertyFirmwareVersion, false, true, __LINE__);
 #if SB_API_VERSION >= 12
   BasicTest(kSbSystemPropertySystemIntegratorName, false, true, __LINE__);
-#else
+#elif SB_API_VERSION == 11
   BasicTest(kSbSystemPropertyOriginalDesignManufacturerName,
             false, true, __LINE__);
+#else
+  BasicTest(kSbSystemPropertyNetworkOperatorName, false, true, __LINE__);
 #endif
   BasicTest(kSbSystemPropertySpeechApiKey, false, true, __LINE__);
 
@@ -128,13 +130,17 @@ TEST(SbSystemGetPropertyTest, DoesNotTouchOutputBufferOnFailureForDefinedIds) {
   UnmodifiedOnFailureTest(kSbSystemPropertyModelYear, __LINE__);
 #if SB_API_VERSION >= 12
   UnmodifiedOnFailureTest(kSbSystemPropertySystemIntegratorName, __LINE__);
-#else
+#elif SB_API_VERSION == 11
   UnmodifiedOnFailureTest(kSbSystemPropertyOriginalDesignManufacturerName,
                           __LINE__);
+#else
+  UnmodifiedOnFailureTest(kSbSystemPropertyNetworkOperatorName, __LINE__);
 #endif
   UnmodifiedOnFailureTest(kSbSystemPropertyPlatformName, __LINE__);
   UnmodifiedOnFailureTest(kSbSystemPropertySpeechApiKey, __LINE__);
+#if SB_API_VERSION >= 5
   UnmodifiedOnFailureTest(kSbSystemPropertyUserAgentAuxField, __LINE__);
+#endif  // SB_API_VERSION >= 5
 }
 
 TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
@@ -157,8 +163,10 @@ TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
     kSbSystemPropertyModelYear,
 #if SB_API_VERSION >= 12
     kSbSystemPropertySystemIntegratorName,
-#else
+#elif SB_API_VERSION == 11
     kSbSystemPropertyOriginalDesignManufacturerName,
+#else
+    kSbSystemPropertyNetworkOperatorName,
 #endif
     kSbSystemPropertyPlatformName,
   };
