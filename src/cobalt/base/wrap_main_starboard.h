@@ -53,9 +53,14 @@ void BaseEventHandler(const SbEvent* event) {
       DCHECK(!g_loop);
       g_loop = new base::MessageLoopForUI();
       g_loop->Start();
-
+#if SB_API_VERSION >= 13
       preload_function(data->argument_count, data->argument_values, data->link,
-                       base::Bind(&SbSystemRequestStop, 0));
+                       base::Bind(&SbSystemRequestStop, 0), event->timestamp);
+#else  // SB_API_VERSION >= 13
+      preload_function(data->argument_count, data->argument_values, data->link,
+                       base::Bind(&SbSystemRequestStop, 0),
+                       SbTimeGetMonotonicNow());
+#endif  // SB_API_VERSION >= 13
       g_started = true;
       break;
     }
@@ -74,9 +79,14 @@ void BaseEventHandler(const SbEvent* event) {
         g_loop = new base::MessageLoopForUI();
         g_loop->Start();
       }
-
+#if SB_API_VERSION >= 13
       start_function(data->argument_count, data->argument_values, data->link,
-                     base::Bind(&SbSystemRequestStop, 0));
+                     base::Bind(&SbSystemRequestStop, 0), event->timestamp);
+#else  // SB_API_VERSION >= 13
+      start_function(data->argument_count, data->argument_values, data->link,
+                     base::Bind(&SbSystemRequestStop, 0),
+                     SbTimeGetMonotonicNow());
+#endif  // SB_API_VERSION >= 13
       g_started = true;
       break;
     }
@@ -97,8 +107,7 @@ void BaseEventHandler(const SbEvent* event) {
       g_at_exit = NULL;
       break;
     }
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
     case kSbEventTypeBlur:
     case kSbEventTypeFocus:
     case kSbEventTypeConceal:
@@ -110,18 +119,17 @@ void BaseEventHandler(const SbEvent* event) {
     case kSbEventTypeUnpause:
     case kSbEventTypeSuspend:
     case kSbEventTypeResume:
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
     case kSbEventTypeInput:
     case kSbEventTypeUser:
     case kSbEventTypeLink:
     case kSbEventTypeVerticalSync:
     case kSbEventTypeScheduled:
-#if SB_API_VERSION >= SB_ACCESSIBILITY_EVENTS_RENAMED_VERSION
+#if SB_API_VERSION >= 13
     case kSbEventTypeAccessibilitySettingsChanged:
 #else
     case kSbEventTypeAccessiblitySettingsChanged:
-#endif  // SB_API_VERSION >= SB_ACCESSIBILITY_EVENTS_RENAMED_VERSION
+#endif  // SB_API_VERSION >= 13
     case kSbEventTypeLowMemory:
     case kSbEventTypeWindowSizeChanged:
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
@@ -136,17 +144,17 @@ void BaseEventHandler(const SbEvent* event) {
     case kSbEventTypeAccessibilityCaptionSettingsChanged:
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 #if SB_API_VERSION >= 12
-#if SB_API_VERSION >= SB_ACCESSIBILITY_EVENTS_RENAMED_VERSION
+#if SB_API_VERSION >= 13
     case kSbEventTypeAccessibilityTextToSpeechSettingsChanged:
 #else
     case kSbEventTypeAccessiblityTextToSpeechSettingsChanged:
-#endif  // SB_API_VERSION >= SB_ACCESSIBILITY_EVENTS_RENAMED_VERSION
+#endif  // SB_API_VERSION >= 13
 #endif  // SB_API_VERSION >= 12
-#if SB_API_VERSION >= SB_NETWORK_EVENTS_VERSION
+#if SB_API_VERSION >= 13
     case kSbEventTypeOsNetworkDisconnected:
     case kSbEventTypeOsNetworkConnected:
 #endif
-#if SB_API_VERSION >= SB_EVENT_DATE_TIME_CONFIGURATION_CHANGED_VERSION
+#if SB_API_VERSION >= 13
     case kSbEventDateTimeConfigurationChanged:
 #endif
       event_function(event);

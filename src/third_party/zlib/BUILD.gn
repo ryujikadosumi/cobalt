@@ -63,6 +63,10 @@ source_set("zlib_adler32_simd") {
   }
 
   configs += [ ":zlib_internal_config" ]
+  if (is_starboard && !is_debug) {
+    configs -= [ "//starboard/build/config:size" ]
+    configs += [ "//starboard/build/config:speed" ]
+  }
 
   public_configs = [ ":zlib_adler32_simd_config" ]
 }
@@ -94,7 +98,7 @@ if (use_arm_neon_optimizations) {
     if (!is_ios) {
       include_dirs = [ "." ]
 
-      if (is_android) {
+      if (!is_starboard && is_android) {
         import("//build/config/android/config.gni")
         if (defined(android_ndk_root) && android_ndk_root != "") {
           deps = [
@@ -123,6 +127,13 @@ if (use_arm_neon_optimizations) {
     }
 
     configs += [ ":zlib_internal_config" ]
+    if (is_starboard && !is_debug) {
+      configs -= [ "//starboard/build/config:size" ]
+      configs += [ "//starboard/build/config:speed" ]
+    }
+    if (is_starboard) {
+      deps = [ "//starboard:starboard_headers_only" ]
+    }
 
     public_configs = [ ":zlib_arm_crc32_config" ]
   }
@@ -175,6 +186,10 @@ source_set("zlib_inflate_chunk_simd") {
     ":zlib_internal_config",
     "//build/config/compiler:no_chromium_code",
   ]
+  if (is_starboard && !is_debug) {
+    configs -= [ "//starboard/build/config:size" ]
+    configs += [ "//starboard/build/config:speed" ]
+  }
 
   public_configs = [ ":zlib_inflate_chunk_simd_config" ]
 }

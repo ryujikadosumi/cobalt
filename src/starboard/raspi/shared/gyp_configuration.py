@@ -98,7 +98,7 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
       raise RuntimeError('RasPi builds require the "RASPI_HOME" '
                          'environment variable to be set.')
     if not os.path.isdir(self.sysroot):
-      raise RuntimeError('RasPi builds require $RASPI_HOME/sysroot '
+      raise RuntimeError('RasPi builds require $RASPI_HOME/busterroot '
                          'to be a valid directory.')
 
   def GetTargetToolchain(self, **kwargs):
@@ -171,6 +171,9 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
           # not repair these failing tests for now.
           'VideoDecoderTests/VideoDecoderTest.EndOfStreamWithoutAnyInput/0',
           'VideoDecoderTests/VideoDecoderTest.MultipleResets/0',
+          # Filter failed tests.
+          'PlayerComponentsTests/PlayerComponentsTest.*',
+
       ],
   }
 

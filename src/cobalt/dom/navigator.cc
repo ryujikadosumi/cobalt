@@ -145,10 +145,12 @@ bool CanPlay(const media::CanPlayTypeHandler& can_play_type_handler,
 
 Navigator::Navigator(
     script::EnvironmentSettings* settings, const std::string& user_agent,
-    const std::string& language,
+    UserAgentPlatformInfo* platform_info, const std::string& language,
     scoped_refptr<cobalt::dom::captions::SystemCaptionSettings> captions,
     script::ScriptValueFactory* script_value_factory)
     : user_agent_(user_agent),
+      user_agent_data_(
+          new NavigatorUAData(platform_info, script_value_factory)),
       language_(language),
       mime_types_(new MimeTypeArray()),
       plugins_(new PluginArray()),
@@ -158,6 +160,12 @@ Navigator::Navigator(
       script_value_factory_(script_value_factory) {}
 
 const std::string& Navigator::language() const { return language_; }
+
+script::Sequence<std::string> Navigator::languages() const {
+  script::Sequence<std::string> languages;
+  languages.push_back(language_);
+  return languages;
+}
 
 base::Optional<std::string> GetFilenameForLicenses() {
   const size_t kBufferSize = kSbFileMaxPath + 1;
@@ -215,7 +223,7 @@ bool Navigator::java_enabled() const { return false; }
 bool Navigator::cookie_enabled() const { return false; }
 
 bool Navigator::on_line() const {
-#if SB_API_VERSION >= SB_NETWORK_EVENTS_VERSION
+#if SB_API_VERSION >= 13
   return !SbSystemNetworkIsDisconnected();
 #else
   return true;

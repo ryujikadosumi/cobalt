@@ -37,15 +37,15 @@ namespace x64x11 {
 bool CopyStringAndTestIfSuccess(char* out_value,
                                 int value_length,
                                 const char* from_value) {
-  if (SbStringGetLength(from_value) + 1 > value_length)
+  if (strlen(from_value) + 1 > value_length)
     return false;
-  SbStringCopy(out_value, from_value, value_length);
+  starboard::strlcpy(out_value, from_value, value_length);
   return true;
 }
 
 bool GetSystemProperty(SbSystemPropertyId property_id,
-                         char* out_value,
-                         int value_length) {
+                       char* out_value,
+                       int value_length) {
   if (!out_value || !value_length) {
     return false;
   }
@@ -77,11 +77,6 @@ bool GetSystemProperty(SbSystemPropertyId property_id,
       return CopyStringAndTestIfSuccess(out_value, value_length,
                                         kCertificationScope);
 
-    case kSbSystemPropertyBase64EncodedCertificationSecret:
-      if (kBase64EncodedCertificationSecret[0] == '\0')
-        return false;
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-                                        kBase64EncodedCertificationSecret);
 
     default:
       SB_DLOG(WARNING) << __FUNCTION__

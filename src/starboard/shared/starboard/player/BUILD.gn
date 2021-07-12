@@ -15,6 +15,7 @@
 import("//starboard/shared/starboard/player/testdata/sha_files.gni")
 
 static_library("video_dmp") {
+  check_includes = false
   sources = [
     "//starboard/shared/starboard/player/file_cache_reader.cc",
     "//starboard/shared/starboard/player/file_cache_reader.h",
@@ -25,11 +26,7 @@ static_library("video_dmp") {
   ]
 
   public_deps = [ "//starboard/common" ]
-
-  defines = [
-    # This allows the tests to include internal only header files.
-    "STARBOARD_IMPLEMENTATION",
-  ]
+  configs += [ "//starboard/build/config:starboard_implementation" ]
 }
 
 action("player_download_test_data") {
@@ -67,6 +64,6 @@ action("player_download_test_data") {
     "--sha1",
     sha1_dir,
     "--output",
-    outdir,
+    rebase_path(outdir, root_build_dir),
   ]
 }

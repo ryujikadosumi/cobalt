@@ -114,7 +114,11 @@ int Application::Run(CommandLine command_line) {
     ::starboard::logging::SetMinLogLevel(::starboard::logging::StringToLogLevel(
         command_line_->GetSwitchValue(kMinLogLevel)));
   } else {
+#if SB_LOGGING_IS_OFFICIAL_BUILD
+    ::starboard::logging::SetMinLogLevel(::starboard::logging::SB_LOG_FATAL);
+#else
     ::starboard::logging::SetMinLogLevel(::starboard::logging::SB_LOG_INFO);
+#endif
   }
 
   return RunLoop();
@@ -124,8 +128,7 @@ const CommandLine* Application::GetCommandLine() {
   return command_line_.get();
 }
 
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
 void Application::Blur(void* context, EventHandledCallback callback) {
   Inject(new Event(kSbEventTypeBlur, context, callback));
 }
@@ -149,7 +152,6 @@ void Application::Freeze(void* context, EventHandledCallback callback) {
 void Application::Unfreeze(void* context, EventHandledCallback callback) {
   Inject(new Event(kSbEventTypeUnfreeze, context, callback));
 }
-
 #else
 void Application::Pause(void* context, EventHandledCallback callback) {
   Inject(new Event(kSbEventTypePause, context, callback));
@@ -166,8 +168,7 @@ void Application::Suspend(void* context, EventHandledCallback callback) {
 void Application::Resume(void* context, EventHandledCallback callback) {
   Inject(new Event(kSbEventTypeResume, context, callback));
 }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
 
 void Application::Stop(int error_level) {
   Event* event = new Event(kSbEventTypeStop, NULL, NULL);
@@ -175,7 +176,7 @@ void Application::Stop(int error_level) {
   Inject(event);
 }
 
-void Application::Link(const char *link_data) {
+void Application::Link(const char* link_data) {
   SB_DCHECK(link_data) << "You must call Link with link_data.";
   Inject(new Event(kSbEventTypeLink, SbStringDuplicate(link_data),
                    SbMemoryDeallocate));
@@ -184,6 +185,16 @@ void Application::Link(const char *link_data) {
 void Application::InjectLowMemoryEvent() {
   Inject(new Event(kSbEventTypeLowMemory, NULL, NULL));
 }
+
+#if SB_API_VERSION >= 13
+void Application::InjectOsNetworkDisconnectedEvent() {
+  Inject(new Event(kSbEventTypeOsNetworkDisconnected, NULL, NULL));
+}
+
+void Application::InjectOsNetworkConnectedEvent() {
+  Inject(new Event(kSbEventTypeOsNetworkConnected, NULL, NULL));
+}
+#endif
 
 void Application::WindowSizeChanged(void* context,
                                     EventHandledCallback callback) {
@@ -224,13 +235,11 @@ void Application::SetStartLink(const char* start_link) {
 
 void Application::DispatchStart() {
   SB_DCHECK(IsCurrentThread());
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
   SB_DCHECK(state_ == kStateUnstarted);
 #else
   SB_DCHECK(state_ == kStateUnstarted || state_ == kStatePreloading);
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
   DispatchAndDelete(CreateInitialEvent(kSbEventTypeStart));
 }
 
@@ -253,8 +262,8 @@ bool Application::DispatchAndDelete(Application::Event* event) {
   // Ensure the event is deleted unless it is released.
   scoped_ptr<Event> scoped_event(event);
 
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
+  SbTimeMonotonic timestamp = scoped_event->event->timestamp;
   // Ensure that we go through the the appropriate lifecycle events based on the
   // current state.
   switch (scoped_event->event->type) {
@@ -265,7 +274,7 @@ bool Application::DispatchAndDelete(Application::Event* event) {
       break;
     case kSbEventTypeStart:
       if (state() != kStateUnstarted && state() != kStateStarted) {
-        Inject(new Event(kSbEventTypeFocus, NULL, NULL));
+        Inject(new Event(kSbEventTypeFocus, timestamp, NULL, NULL));
         return true;
       }
       break;
@@ -279,10 +288,10 @@ bool Application::DispatchAndDelete(Application::Event* event) {
         case kStateStopped:
           return true;
         case kStateFrozen:
-          Inject(new Event(kSbEventTypeUnfreeze, NULL, NULL));
-          // The fall-through is intentional.
+          Inject(new Event(kSbEventTypeUnfreeze, timestamp, NULL, NULL));
+        // The fall-through is intentional.
         case kStateConcealed:
-          Inject(new Event(kSbEventTypeReveal, NULL, NULL));
+          Inject(new Event(kSbEventTypeReveal, timestamp, NULL, NULL));
           Inject(scoped_event.release());
           return true;
         case kStateBlurred:
@@ -297,7 +306,7 @@ bool Application::DispatchAndDelete(Application::Event* event) {
         case kStateUnstarted:
           return true;
         case kStateStarted:
-          Inject(new Event(kSbEventTypeBlur, NULL, NULL));
+          Inject(new Event(kSbEventTypeBlur, timestamp, NULL, NULL));
           Inject(scoped_event.release());
           return true;
         case kStateBlurred:
@@ -314,7 +323,7 @@ bool Application::DispatchAndDelete(Application::Event* event) {
           return true;
         case kStateFrozen:
           OnResume();
-          Inject(new Event(kSbEventTypeUnfreeze, NULL, NULL));
+          Inject(new Event(kSbEventTypeUnfreeze, timestamp, NULL, NULL));
           Inject(scoped_event.release());
           return true;
         case kStateConcealed:
@@ -330,10 +339,10 @@ bool Application::DispatchAndDelete(Application::Event* event) {
         case kStateUnstarted:
           return true;
         case kStateStarted:
-          Inject(new Event(kSbEventTypeBlur, NULL, NULL));
-          // The fall-through is intentional
+          Inject(new Event(kSbEventTypeBlur, timestamp, NULL, NULL));
+        // The fall-through is intentional
         case kStateBlurred:
-          Inject(new Event(kSbEventTypeConceal, NULL, NULL));
+          Inject(new Event(kSbEventTypeConceal, timestamp, NULL, NULL));
           Inject(scoped_event.release());
           return true;
         case kStateConcealed:
@@ -362,13 +371,13 @@ bool Application::DispatchAndDelete(Application::Event* event) {
         case kStateUnstarted:
           return true;
         case kStateStarted:
-          Inject(new Event(kSbEventTypeBlur, NULL, NULL));
-          // The fall-through is intentional.
+          Inject(new Event(kSbEventTypeBlur, timestamp, NULL, NULL));
+        // The fall-through is intentional.
         case kStateBlurred:
-          Inject(new Event(kSbEventTypeConceal, NULL, NULL));
-          // The fall-through is intentional.
+          Inject(new Event(kSbEventTypeConceal, timestamp, NULL, NULL));
+        // The fall-through is intentional.
         case kStateConcealed:
-          Inject(new Event(kSbEventTypeFreeze, NULL, NULL));
+          Inject(new Event(kSbEventTypeFreeze, timestamp, NULL, NULL));
           Inject(scoped_event.release());
           return true;
         case kStateFrozen:
@@ -470,12 +479,10 @@ bool Application::DispatchAndDelete(Application::Event* event) {
     default:
       break;
   }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
 
   SbEventHandle(scoped_event->event);
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
   switch (scoped_event->event->type) {
     case kSbEventTypePreload:
       SB_DCHECK(state() == kStateUnstarted);
@@ -550,8 +557,7 @@ bool Application::DispatchAndDelete(Application::Event* event) {
     default:
       break;
   }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
   // Should not be unstarted after the first event.
   SB_DCHECK(state() != kStateUnstarted);
   return true;
@@ -567,13 +573,13 @@ void Application::CallTeardownCallbacks() {
 Application::Event* Application::CreateInitialEvent(SbEventType type) {
   SB_DCHECK(type == kSbEventTypePreload || type == kSbEventTypeStart);
   SbEventStartData* start_data = new SbEventStartData();
-  SbMemorySet(start_data, 0, sizeof(SbEventStartData));
+  memset(start_data, 0, sizeof(SbEventStartData));
   const CommandLine::StringVector& args = command_line_->argv();
   start_data->argument_count = static_cast<int>(args.size());
   // Cobalt web_platform_tests expect an extra argv[argc] set to NULL.
   start_data->argument_values = new char*[start_data->argument_count + 1];
   start_data->argument_values[start_data->argument_count] = NULL;
-  for (int i=0; i < start_data->argument_count; i++) {
+  for (int i = 0; i < start_data->argument_count; i++) {
     start_data->argument_values[i] = const_cast<char*>(args[i].c_str());
   }
   start_data->link = start_link_;

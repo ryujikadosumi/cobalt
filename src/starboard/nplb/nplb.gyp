@@ -224,12 +224,6 @@
         'socket_waiter_wait_timed_test.cc',
         'socket_waiter_wake_up_test.cc',
         'socket_wrapper_test.cc',
-        'speech_recognizer_cancel_test.cc',
-        'speech_recognizer_create_test.cc',
-        'speech_recognizer_destroy_test.cc',
-        'speech_recognizer_helper.h',
-        'speech_recognizer_start_test.cc',
-        'speech_recognizer_stop_test.cc',
         'speech_synthesis_basic_test.cc',
         'state_machine_test.cc',
         'storage_close_record_test.cc',
@@ -277,6 +271,7 @@
         'system_has_capability_test.cc',
         'system_hide_splash_screen_test.cc',
         'system_is_debugger_attached_test.cc',
+        'system_network_status_test.cc',
         'system_sort_test.cc',
         'system_sign_with_certification_secret_key_test.cc',
         'system_symbolize_test.cc',
@@ -320,6 +315,7 @@
       'dependencies': [
         '<@(cobalt_platform_dependencies)',
         '<(DEPTH)/starboard/common/common.gyp:common',
+        '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp14_supported',
         '<(DEPTH)/starboard/shared/starboard/media/media.gyp:media_util',
         '<(DEPTH)/starboard/shared/starboard/player/player.gyp:player_copy_test_data',
         '<(DEPTH)/starboard/shared/starboard/player/player.gyp:video_dmp',
@@ -335,9 +331,9 @@
             'media_set_audio_write_duration_test.cc',
           ],
         }],
-        ['sb_disable_cpp14_audit == 0', {
+        ['sb_disable_cpp17_audit == 0', {
           'dependencies': [
-            '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp14_supported',
+            '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp17_supported',
           ],
         }],
         ['gl_type != "none"', {
@@ -355,7 +351,10 @@
       'type': 'none',
       'variables': {
         'content_test_input_files': [
-          '<(DEPTH)/starboard/nplb/testdata/file_tests/',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/dir_with_files',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/dir_with_only_subdir',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/file01',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/file_with_long_name_and_contents_for_seek_testing_1234567890',
         ],
         'content_test_output_subdir': 'starboard/nplb/file_tests',
       },
